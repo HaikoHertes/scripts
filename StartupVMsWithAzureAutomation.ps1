@@ -53,5 +53,5 @@ ForEach ($VM in $VMs)
 {
     Write-Output "Current UTC time: $((Get-Date).ToUniversalTime())"
     Write-Output "Starting : $($VM.Name) with given startup time $($VM.Tags.AutoStartupTime)..."
-    Start-AzureRMVM -Name $VM.Name -ResourceGroupName $VM.ResourceGroupName -Force
+    Start-AzureRMVM -Name $VM.Name -ResourceGroupName $VM.ResourceGroupName
 }
