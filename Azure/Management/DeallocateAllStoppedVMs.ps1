@@ -35,12 +35,18 @@ catch {
 }
 
 # Get all VMs in all RGs
+# Version 1 - Needs to use the Tag "AutoDeallocate"
 [array]$VMs = Get-AzureRMVm -Status | `
 # First, only get VMs with the needed tags set and being running
 Where-Object {($PSItem.Tags.Keys -contains "AutoDeallocate") `
          -and ($PSItem.PowerState -eq "VM stopped")} | `
       # Next, find VMs that should get deallocated
       Where-Object {$PSItem.Tags.AutoDeallocate -eq "Yes"}
+      
+<#
+# Version 2 - Deallocate all VMs without using the Tag "AutoDeallocate"
+[array]$VMs = Get-AzureRMVm -Status | Where-Object {$PSItem.PowerState -eq "VM stopped"}
+#>
 
 # Iterate through VMs and deallocate them
 ForEach ($VM in $VMs) 
