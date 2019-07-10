@@ -39,14 +39,14 @@ catch {
 # For comparison, we need the current UTC time
 $CurrentDateTimeUTC = (Get-Date).ToUniversalTime()
 
-# Get all running VMs in all RGs
-[array]$runningVms = (Get-AzureRMVm -Status | Where-Object {$PSItem.PowerState -eq "VM running"})
+# Get all VMs in all RGs
+[array]$AllVms = Get-AzureRMVm -Status
 
 [array]$VmsToStart = @()
 [array]$VmsToStop = @()
 
 # And here comes the ugly part - I know there is a shorter way for this, but this would become un-read-able for others...
-$runningVms | ForEach-Object {
+$AllVms | ForEach-Object {
     #AutoShutdown AND AutoStartup as well as AutoShutdownTime AND AutoStartupTime set
     if(($PSItem.Tags.Keys -contains "AutoShutdown") -and ($PSItem.Tags.Keys -contains "AutoStartup") -and ($PSItem.Tags.Keys -contains "AutoShutdownTime") -and ($PSItem.Tags.Keys -contains "AutoStartupTime"))
     {
@@ -57,12 +57,12 @@ $runningVms | ForEach-Object {
             if([datetime]::ParseExact($PSItem.Tags.AutoShutdownTime,'HH:mm:ss',$null) -gt [datetime]::ParseExact($PSItem.Tags.AutoStartupTime,'HH:mm:ss',$null))
             {
                 #CurrentTime > AutoShutdownTime
-                if($CurrentDateTimeUTC -ge [datetime]::ParseExact($PSItem.Tags.AutoShutdownTime,'HH:mm:ss',$null))
+                if($CurrentDateTimeUTC -ge [datetime]::ParseExact($PSItem.Tags.AutoShutdownTime,'HH:mm:ss',$null) -and ($PSItem.PowerState -eq "VM running"))
                 {
                     $VmsToStop += $PSItem
                 }
                 #CurrentTime > AutoStartupTime
-                elseif($CurrentDateTimeUTC -ge [datetime]::ParseExact($PSItem.Tags.AutoStartupTime,'HH:mm:ss',$null))
+                elseif($CurrentDateTimeUTC -ge [datetime]::ParseExact($PSItem.Tags.AutoStartupTime,'HH:mm:ss',$null) -and $PSItem.PowerState -ne "VM running")
                 {
                     $VmsToStart += $PSItem
                 }
@@ -71,12 +71,12 @@ $runningVms | ForEach-Object {
             elseif([datetime]::ParseExact($PSItem.Tags.AutoShutdownTime,'HH:mm:ss',$null) -lt [datetime]::ParseExact($PSItem.Tags.AutoStartupTime,'HH:mm:ss',$null))
             {
                 #CurrentTime > AutoStartupTime
-                if($CurrentDateTimeUTC -ge [datetime]::ParseExact($PSItem.Tags.AutoStartupTime,'HH:mm:ss',$null))
+                if($CurrentDateTimeUTC -ge [datetime]::ParseExact($PSItem.Tags.AutoStartupTime,'HH:mm:ss',$null) -and $PSItem.PowerState -ne "VM running")
                 {
                     $VmsToStart += $PSItem
                 }
                 #CurrentTime > AutoShutdownTime
-                elseif($CurrentDateTimeUTC -ge [datetime]::ParseExact($PSItem.Tags.AutoShutdownTime,'HH:mm:ss',$null))
+                elseif($CurrentDateTimeUTC -ge [datetime]::ParseExact($PSItem.Tags.AutoShutdownTime,'HH:mm:ss',$null) -and $PSItem.PowerState -eq "VM running")
                 {
                     $VmsToStop += $PSItem
                 }    
@@ -91,7 +91,7 @@ $runningVms | ForEach-Object {
         If(($PSItem.Tags.AutoShutdown -eq "Yes") -and ($PSItem.Tags.AutoStartup -ne "Yes"))
         {
             #CurrentTime > AutoShutdownTime
-            if($CurrentDateTimeUTC -ge [datetime]::ParseExact($PSItem.Tags.AutoShutdownTime,'HH:mm:ss',$null))
+            if($CurrentDateTimeUTC -ge [datetime]::ParseExact($PSItem.Tags.AutoShutdownTime,'HH:mm:ss',$null) -and $PSItem.PowerState -eq "VM running")
             {
                 $VmsToStop += $PSItem
             }
@@ -100,7 +100,7 @@ $runningVms | ForEach-Object {
         If(($PSItem.Tags.AutoShutdown -ne "Yes") -and ($PSItem.Tags.AutoStartup -eq "Yes"))
         {
             #CurrentTime > AutoStartupTime
-            if($CurrentDateTimeUTC -ge [datetime]::ParseExact($PSItem.Tags.AutoStartupTime,'HH:mm:ss',$null))
+            if($CurrentDateTimeUTC -ge [datetime]::ParseExact($PSItem.Tags.AutoStartupTime,'HH:mm:ss',$null) -and $PSItem.PowerState -ne "VM running")
             {
                 $VmsToStart += $PSItem
             }
@@ -112,7 +112,7 @@ $runningVms | ForEach-Object {
         If(($PSItem.Tags.AutoShutdown -eq "Yes"))
         {
             #CurrentTime > AutoShutdownTime
-            if($CurrentDateTimeUTC -ge [datetime]::ParseExact($PSItem.Tags.AutoShutdownTime,'HH:mm:ss',$null))
+            if($CurrentDateTimeUTC -ge [datetime]::ParseExact($PSItem.Tags.AutoShutdownTime,'HH:mm:ss',$null) -and $PSItem.PowerState -eq "VM running")
             {
                 $VmsToStop += $PSItem
             }
@@ -124,7 +124,7 @@ $runningVms | ForEach-Object {
         If(($PSItem.Tags.AutoStartup -eq "Yes"))
         {
             #CurrentTime > AutoStartupTime
-            if($CurrentDateTimeUTC -ge [datetime]::ParseExact($PSItem.Tags.AutoStartupTime,'HH:mm:ss',$null))
+            if($CurrentDateTimeUTC -ge [datetime]::ParseExact($PSItem.Tags.AutoStartupTime,'HH:mm:ss',$null) -and $PSItem.PowerState -ne "VM running")
             {
                 $VmsToStart += $PSItem
             }
