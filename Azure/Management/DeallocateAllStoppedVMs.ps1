@@ -1,7 +1,7 @@
 <#
     .DESCRIPTION
         This runbooks deallocates all stopped Azure VMs in all Ressource Groups that have the Tag "AutoDeallocate" set to "Yes" at the schedule of the runbook, i.e. once per hour.
-        Attention: This need the Azure Automation modules being updated - take a look on this video: https://www.youtube.com/watch?v=D61XWOeN_w8&t=11s
+        Attention: This need the Azure Automation modules being updated - take a look on this video: https://www.youtube.com/watch?v=D61XWOeN_w8&t=11s (08:30)
     .NOTES
         AUTHOR: Haiko Hertes
                 Microsoft MVP & Azure Architect
