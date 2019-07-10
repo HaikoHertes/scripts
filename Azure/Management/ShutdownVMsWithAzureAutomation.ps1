@@ -1,6 +1,7 @@
 <#
     .DESCRIPTION
         This runbooks shuts down all Azure VMs in all Ressource Groups that have the Tag "AutoShutdown" set to "Yes" at the UTC time given in "AutoShutdownTime" in the format "HH:mm:ss".
+        Attention: This need the Azure Automation modules being updated - take a look on this video: https://www.youtube.com/watch?v=D61XWOeN_w8&t=11s
 
     .NOTES
         AUTHOR: Haiko Hertes
