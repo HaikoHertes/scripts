@@ -140,14 +140,14 @@ Write-Output "$($VmsToStop.Name)"
 # Iterate through VmsToStop and shut them down
 ForEach ($VM in $VmsToStop) 
 {
-    Write-Output "Current UTC time: $((Get-Date).ToUniversalTime())"
-    Write-Output "Shutting down: $($VM.Name) with given shutdown time $($VM.Tags.AutoShutdownTime)..."
+    #Write-Output "Current UTC time: $((Get-Date).ToUniversalTime())"
+    Write-Output "Shutting down: $($VM.Name) with given shutdown time $($VM.Tags.AutoShutdownTime) in current state $($VM.PowerState)..."
     Stop-AzureRMVM -Name $VM.Name -ResourceGroupName $VM.ResourceGroupName -Force
 }
 
 ForEach ($VM in $VmsToStart ) 
 {
-    Write-Output "Current UTC time: $((Get-Date).ToUniversalTime())"
-    Write-Output "Starting : $($VM.Name) with given startup time $($VM.Tags.AutoStartupTime)..."
+    #Write-Output "Current UTC time: $((Get-Date).ToUniversalTime())"
+    Write-Output "Starting : $($VM.Name) with given startup time $($VM.Tags.AutoStartupTime) in current state $($VM.PowerState)..."
     Start-AzureRMVM -Name $VM.Name -ResourceGroupName $VM.ResourceGroupName
 }
