@@ -1,4 +1,9 @@
-﻿# This is needed for the FileOpen Dialog	
+# Script to expand tags from the usage details CSV provided by Azure / Microsoft
+# to filter usage by tags; also converts some numbers to local format
+# Download CSV file by hand first!
+
+
+# This is needed for the FileOpen Dialog	
 Add-Type -AssemblyName System.Windows.Forms
 $FileBrowser = New-Object System.Windows.Forms.OpenFileDialog -Property @{ 
     InitialDirectory = [Environment]::GetFolderPath('Desktop') 
