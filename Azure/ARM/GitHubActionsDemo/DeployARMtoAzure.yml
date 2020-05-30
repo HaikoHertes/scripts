@@ -1,0 +1,28 @@
+name: DeployARMtoAzure
+
+on: [push]
+
+jobs:
+
+    deploy:
+        runs-on: ubuntu-latest
+        steps:
+        
+        - name: Login to Azure
+          uses: azure/login@v1.1
+          with:
+            creds: ${{ secrets.AZURE_CREDENTIALS }}
+            
+        - name: Checkout Source Code
+          uses: actions/checkout@v2
+          
+        - name: Deyplo ARM Template
+          uses: azure/CLI@v1
+          with:
+            inlineScript: |
+              az deployment group create \
+              --name ARMDeployment \
+              --resource-group RG-GitHubDemo \
+              --template-file arm/template.json \
+              --parameters arm/parameters.json
+        
