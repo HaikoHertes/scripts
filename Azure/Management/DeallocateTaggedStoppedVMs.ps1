@@ -1,12 +1,11 @@
 <#
     .DESCRIPTION
-        This runbooks deallocates all stopped Azure VMs in all Ressource Groups at the schedule of the runbook, i.e. once per hour.
+        This runbooks deallocates all stopped Azure VMs in all Ressource Groups that have the Tag "AutoDeallocate" set to "Yes" or "true" at the schedule of the runbook, i.e. once per hour.
         Attention: This need the Azure Automation modules being updated - take a look on this video: https://www.youtube.com/watch?v=D61XWOeN_w8&t=11s (08:30)
     .NOTES
         AUTHOR: Haiko Hertes
                 Microsoft MVP & Azure Architect
-        MODIFIED: Philipp Schmitt
-        LASTEDIT: 2019/07/11
+        LASTEDIT: 2019/06/26
 #>
 
 
@@ -37,8 +36,14 @@ catch {
 }
 
 # Get all VMs in all RGs
-# Deallocate all stopped VMs
-[array]$VMs = Get-AzureRMVm -Status | Where-Object {$PSItem.PowerState -eq "VM stopped"}
+[array]$VMs = Get-AzureRMVm -Status | `
+# only get VMs with the needed tags set and being running
+Where-Object {($PSItem.Tags.Keys -contains "AutoDeallocate") `
+         -and ($PSItem.PowerState -eq "VM stopped")} | `
+      # Next, find VMs that should get deallocated
+      Where-Object {($PSItem.Tags.AutoDeallocate -eq "Yes") `
+         -or (($PSItem.Tags.AutoDeallocate -eq "true"))}
+
 
 # Iterate through VMs and deallocate them
 ForEach ($VM in $VMs) 
