@@ -16,7 +16,7 @@ jobs:
         - name: Checkout Source Code
           uses: actions/checkout@v2
           
-        - name: Deyplo ARM Template
+        - name: Deploy ARM Template
           uses: azure/CLI@v1
           with:
             inlineScript: |
