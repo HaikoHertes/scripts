@@ -1,0 +1,30 @@
+name: DeployARMtoAzure
+
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+
+  deploy:
+    runs-on: ubuntu-20.04
+    steps:
+    
+    - name: Login via Az module
+      uses: azure/login@v1.1
+      with:
+        creds: ${{secrets.AZURE_CREDENTIALS}}
+        enable-AzPSSession: true
+    
+    - name: Checkout Source Code
+      uses: actions/checkout@v2
+        
+    - name: Run Azure PowerShell script DeployARMtoAzure.ps1
+      uses: azure/powershell@v1
+      with:
+        inlineScript: |
+          Set-AzContext -SubscriptionId ${{secrets.SUBSCRIPTION_ID}};
+          $command = “./DeployARMtoAzure.ps1";
+          Invoke-Expression $command;
+        azPSVersion: '4.1.0'
+        #AzPS 4.1.0 is needed to set Tags on the Deployments; AzPS 4.1.0 needs Ubuntu-20.04
