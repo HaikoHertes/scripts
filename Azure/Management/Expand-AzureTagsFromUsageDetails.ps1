@@ -1,6 +1,15 @@
-# Script to expand tags from the usage details CSV provided by Azure / Microsoft
-# to filter usage by tags; also converts some numbers to local format
-# Download CSV file by hand first!
+<#
+    .DESCRIPTION
+        Script to expand tags from the usage details CSV provided by Azure / Microsoft
+        to filter usage by tags; also converts some numbers to local format
+        Download CSV file by hand first!
+			
+		A more detailed description and explanations can be found here: https://www.hertes.net/2020/01/azure-powershell-das-usagedetails-csv-nach-tags-auswerten/ (GERMAN language only!)
+    .NOTES
+        AUTHOR: Haiko Hertes
+                Microsoft MVP & Azure Architect
+        LASTEDIT: 2020/01/10
+#>
 
 
 # This is needed for the FileOpen Dialog	
