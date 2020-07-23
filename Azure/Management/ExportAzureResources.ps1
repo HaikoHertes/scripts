@@ -43,6 +43,8 @@ $containerName = "PUT-CONTAINER-NAME-HERE"
 <######                                         #####>
 <####################################################>
 
+$startTime = Get-Date
+
 # Ensures that you do not inherit an AzContext in your runbook
 Disable-AzContextAutosave –Scope Process
 # To deal with multiple subscriptions, your runbook must use the Disable-AzContextAutosave cmdlet. This cmdlet ensures that the authentication context isn't retrieved from another runbook running in the same sandbox. The runbook also uses theAzContext parameter on the Az module cmdlets and passes it the proper context.
@@ -151,10 +153,16 @@ If (($jobs.status -contains "Running" -And $runningCount -gt 1 ) -Or ($jobs.Stat
         Get-AzStorageBlob -Container $containerName -Context $context | Where {$_.LastModified -lt (Get-Date).AddDays(-$DaysToKeep)} | Remove-AzStorageBlob
     }
 
+    $endTime = Get-Date
+
+    $runtime = New-TimeSpan -Start $startTime -End $endTime
+    
+
     If($SendResultsViaMail)
     {
         $body = "<h1>Azure Resource Export Script done!</h1>" 
         $body += "Azure Automation has finished the export of all Azure resources to a Storage Account.<br>$fileCount files were generated.<br><br>" 
+        $body += "Runtime of the script was: $(("{0:mm\:ss}" -f ([TimeSpan] $runtime)).ToString()) (mm:ss).<br><br>" 
         $body += "The exported templates can be downloaded as a zip file from here: <a href='$($blob.ICloudBlob.uri.AbsoluteUri)'>$($blob.ICloudBlob.uri.AbsoluteUri)</a>"
         Send-MailMessage -SmtpServer $SmtpServer -Attachments $FileName -Subject "Azure Template Export done - $fileCount files were exported and uploaded" -Body $body -BodyAsHtml -To $SmtpRecipient -From $SmtpSender 
     }
