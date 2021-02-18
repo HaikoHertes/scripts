@@ -1,27 +1,26 @@
 <#
     .DESCRIPTION
-        This runbooks deallocates all stopped Azure VMs in all Ressource Groups that have the Tag "AutoDeallocate" set to "Yes" or "true" at the schedule of the runbook, i.e. once per hour.
-        Attention: This need the Azure Automation modules being updated - take a look on this video: https://www.youtube.com/watch?v=D61XWOeN_w8&t=11s (08:30)
+        This runbooks deallocates all stopped Azure VMs in all Ressource Groups that have the Tag "AutoDeallocate" set to "true" at the schedule of the runbook, i.e. once per hour.
     .NOTES
-        AUTHOR: Haiko Hertes
+        AUTHOR: Haiko Hertes, SoftwareONE
                 Microsoft MVP & Azure Architect
-        LASTEDIT: 2019/06/26
+        LASTEDIT: 2021/02/17
 #>
-
 
 # Login to Azure with AzureRunAsConnection
 $connectionName = "AzureRunAsConnection" 
 try
 {
     # Get the connection "AzureRunAsConnection "
-    $ServicePrincipalConnection=Get-AutomationConnection -Name $connectionName         
+    $ServicePrincipalConnection = Get-AutomationConnection -Name $connectionName         
     
     "Logging into Azure using service principal connection $connectionName..."
-    Login-AzureRmAccount `
+    Connect-AzAccount `
         -ServicePrincipal `
         -TenantId $ServicePrincipalConnection.TenantId `
         -ApplicationId $ServicePrincipalConnection.ApplicationId `
-        -CertificateThumbprint $ServicePrincipalConnection.CertificateThumbprint 
+        -CertificateThumbprint $ServicePrincipalConnection.CertificateThumbprint `
+        -WarningAction SilentlyContinue 
 
 }
 catch {
@@ -35,20 +34,39 @@ catch {
     }
 }
 
+
+$AllSubscriptions = Get-AzSubscription
+[array]$AllVms = @()
+ForEach($Sub in $AllSubscriptions)
+{
+    $Sub | Set-AzContext -WarningAction SilentlyContinue | out-null
+    $AllVms += Get-AzVm -Status
+}
+
+"Found $($AllVms.Count) VMs..."
+
 # Get all VMs in all RGs
-[array]$VMs = Get-AzureRMVm -Status | `
-# only get VMs with the needed tags set and being running
-Where-Object {($PSItem.Tags.Keys -contains "AutoDeallocate") `
+[array]$VMs = $AllVms | `
+# First, only get VMs with the needed tags set and being running
+Where-Object {($PSItem.Tags.Keys -icontains "autodeallocate") `
          -and ($PSItem.PowerState -eq "VM stopped")} | `
       # Next, find VMs that should get deallocated
-      Where-Object {($PSItem.Tags.AutoDeallocate -eq "Yes") `
-         -or (($PSItem.Tags.AutoDeallocate -eq "true"))}
-
+      Where-Object { $PSItem.Tags["$($PSItem.Tags.Keys | Where {$_.toLower() -ieq "autodeallocate"})"] -eq "true"}
 
 # Iterate through VMs and deallocate them
-ForEach ($VM in $VMs) 
+$Jobs = @()
+ForEach ($VM in ($VMs | Sort-Object Id)) 
 {
-    Write-Output "Current UTC time: $((Get-Date).ToUniversalTime())"
     Write-Output "Deallocating $($VM.Name)..."
-    Stop-AzureRMVM -Name $VM.Name -ResourceGroupName $VM.ResourceGroupName -Force
+    $SubId = $VM.Id.Split("/")[2] # This is the Subscription Id as part of
+    $Context = Get-AzContext
+    If($Context.Subscription.Id -ne $SubId)
+    {
+        Set-AzContext -SubscriptionId $SubId -WarningAction SilentlyContinue | Out-Null
+    }
+    $Jobs += Stop-AzVM -Name $VM.Name -ResourceGroupName $VM.ResourceGroupName -Force -AsJob
 }
+
+"Waiting for all Jobs to complete..."
+$Jobs | Wait-Job -Timeout 120
+"Jobs completed!"
