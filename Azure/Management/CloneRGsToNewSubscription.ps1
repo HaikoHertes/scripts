@@ -2,16 +2,16 @@
 param (
     
     [String]
-    $TenantId = "b9b25f83-56b0-4c03-8a95-717a9e63808b",
+    $TenantId,
 
     [String]
-    $SourceSubscriptionId = "1e79c102-26e2-45de-bc3f-779b1fb1f6f7",
+    $SourceSubscriptionId,
 
     [String]
-    $DestinationSubscriptionId = "20cc1a82-1123-48ec-bd89-7d03a7550be3",
+    $DestinationSubscriptionId,
 
     [String[]]
-    $RGsToSkip = ("MorphoSysAG","AzureBackupRG_westeurope_1","CommVault_Backup","NetworkWatcherRG")
+    $RGsToSkip
 
 )
 
