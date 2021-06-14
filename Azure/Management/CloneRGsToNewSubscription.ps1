@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param (
-    [Parameter()]
+    
     [String]
     $TenantId = "b9b25f83-56b0-4c03-8a95-717a9e63808b",
 
@@ -29,35 +29,50 @@ catch{
     Write-Host "✔ Login" -ForegroundColor Green
 }
 
-
+Write-Host "Gathering source resource groups and their RBAC assignments..."  -ForegroundColor Green
+$RGsWithRBAC = @()
 Set-AzContext -Tenant $TenantId -SubscriptionId $SourceSubscriptionId > $null
 $AllRGs = Get-AzResourceGroup
 ForEach($RG in $AllRGs)
 {
-    "Resource Group: $($RG.ResourceGroupName)"        
+    Write-Host "Resource Group: $($RG.ResourceGroupName)" -ForegroundColor Green
     If($RG.ResourceGroupName -in $RGsToSkip)        
     {
-        "RG is on the skip-list - skipping..."            
+        Write-Host "RG is on the skip-list - skipping..." -ForegroundColor Yellow         
     }
     else {
-        Set-AzContext -Tenant $TenantId -SubscriptionId $SourceSubscriptionId > $null
-        "Source: $((Get-AzContext).Subscription.Name)"
 
         $RBACList = Get-AzRoleAssignment -ResourceGroupName ($RG.ResourceGroupName) | Where-Object {$_.Scope -eq $RG.ResourceId}
-        Set-AzContext -Tenant $TenantId -SubscriptionId $DestinationSubscriptionId > $null
-        "Destination: $((Get-AzContext).Subscription.Name)"
-        If((Get-AzResourceGroup -Name ($RG.ResourceGroupName) -Location ($RG.Location) -ErrorAction SilentlyContinue | Measure-Object).Count -gt 0)
-        {
-            "Resource Group ""$($RG.ResourceGroupName)"" already exists in destination subscription - skipping..."
+
+        $RGsWithRBAC += [PSCustomObject]@{
+            ResourceGroup = $RG
+            RoleAssignments = $RBACList
         }
-        else {
-            New-AzResourceGroup -Name ($RG.ResourceGroupName) -Location ($RG.Location)
-            ForEach($RBACEntry in $RBACList)
-            {
-                New-AzRoleAssignment -ResourceGroupName ($RG.ResourceGroupName) -RoleDefinitionName ($RBACEntry.RoleDefinitionName) -ObjectId ($RBACEntry.ObjectId)
-            }
-            "Resource Group ""$($RG.ResourceGroupName)"" got created and roles assigned!"
-        }
+
+
+        
     }
-    Read-Host "ENTER to proceed..."
+    #Read-Host "ENTER to proceed..."
+}
+Write-Host "###########################################################################" -ForegroundColor Green
+Write-Host "Source Subscription: $((Get-AzContext).Subscription.Name)" -ForegroundColor Green
+Set-AzContext -Tenant $TenantId -SubscriptionId $DestinationSubscriptionId > $null
+Write-Host "Destination Subscription: $((Get-AzContext).Subscription.Name)" -ForegroundColor Green
+Write-Host "Cloning RGs..." -ForegroundColor Green
+Write-Host "###########################################################################" -ForegroundColor Green
+ForEach($RGObject in $RGsWithRBAC)
+{
+    If((Get-AzResourceGroup -Name ($RGObject.ResourceGroup.ResourceGroupName) -Location ($RGObject.ResourceGroup.Location) -ErrorAction SilentlyContinue | Measure-Object).Count -gt 0)
+    {
+        Write-Host "Resource Group ""$($RGObject.ResourceGroup.ResourceGroupName)"" already exists in destination subscription - skipping..." -ForegroundColor Yellow
+    }
+    else {
+        New-AzResourceGroup -Name ($RGObject.ResourceGroup.ResourceGroupName) -Location ($RGObject.ResourceGroup.Location)
+        ForEach($RBACEntry in $RGObject.RoleAssignments)
+        {
+            New-AzRoleAssignment -ResourceGroupName ($RGObject.ResourceGroup.ResourceGroupName) -RoleDefinitionName ($RBACEntry.RoleDefinitionName) -ObjectId ($RBACEntry.ObjectId)
+        }
+        Write-Host "Resource Group ""$($RGObject.ResourceGroup.ResourceGroupName)"" got created and roles assigned!" -ForegroundColor Green
+    }
+    #Read-Host "ENTER to proceed..."
 }
