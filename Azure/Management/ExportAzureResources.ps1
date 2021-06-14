@@ -79,7 +79,7 @@ catch {
 $jobs = Get-AzAutomationJob -ResourceGroupName $rgName -AutomationAccountName $aaName -RunbookName $runbookName -AzContext $AzureContext
 
 # Check to see if it is already running
-$runningCount = ($jobs | ? {$_.Status -eq "Running"}).count
+$runningCount = ($jobs | Where-Object {$_.Status -eq "Running"}).count
 
 If (($jobs.status -contains "Running" -And $runningCount -gt 1 ) -Or ($jobs.Status -eq "New")) {
     # Exit code
@@ -150,7 +150,7 @@ If (($jobs.status -contains "Running" -And $runningCount -gt 1 ) -Or ($jobs.Stat
     {
         # Cleaning up files older than X days
         "Cleaning up files older than $DaysToKeep days..."
-        Get-AzStorageBlob -Container $containerName -Context $context | Where {$_.LastModified -lt (Get-Date).AddDays(-$DaysToKeep)} | Remove-AzStorageBlob
+        Get-AzStorageBlob -Container $containerName -Context $context | Where-Object {$_.LastModified -lt (Get-Date).AddDays(-$DaysToKeep)} | Remove-AzStorageBlob
     }
 
     $endTime = Get-Date
