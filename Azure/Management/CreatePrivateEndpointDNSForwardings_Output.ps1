@@ -1,8 +1,11 @@
-Add-DnsServerConditionalForwarderZone -Name "database.windows.net" -MasterServers 
-Add-DnsServerConditionalForwarderZone -Name "blob.core.windows.net" -MasterServers 
-Add-DnsServerConditionalForwarderZone -Name "table.core.windows.net" -MasterServers 
-Add-DnsServerConditionalForwarderZone -Name "queue.core.windows.net" -MasterServers 
-Add-DnsServerConditionalForwarderZone -Name "file.core.windows.net" -MasterServers 
-Add-DnsServerConditionalForwarderZone -Name "vault.azure.net" -MasterServers 
-Add-DnsServerConditionalForwarderZone -Name "vaultcore.azure.net" -MasterServers 
-Add-DnsServerConditionalForwarderZone -Name "azurewebsites.net" -MasterServers 
+Add-DnsServerConditionalForwarderZone -Name "OK" -MasterServers 1.2.3.4,10.11.12.13
+Add-DnsServerConditionalForwarderZone -Name "database.windows.net" -MasterServers 1.2.3.4,10.11.12.13
+Add-DnsServerConditionalForwarderZone -Name "blob.core.windows.net" -MasterServers 1.2.3.4,10.11.12.13
+Add-DnsServerConditionalForwarderZone -Name "table.core.windows.net" -MasterServers 1.2.3.4,10.11.12.13
+Add-DnsServerConditionalForwarderZone -Name "queue.core.windows.net" -MasterServers 1.2.3.4,10.11.12.13
+Add-DnsServerConditionalForwarderZone -Name "file.core.windows.net" -MasterServers 1.2.3.4,10.11.12.13
+Add-DnsServerConditionalForwarderZone -Name "westeurope.batch.azure.com" -MasterServers 1.2.3.4,10.11.12.13
+Add-DnsServerConditionalForwarderZone -Name "northeurope.batch.azure.com" -MasterServers 1.2.3.4,10.11.12.13
+Add-DnsServerConditionalForwarderZone -Name "vault.azure.net" -MasterServers 1.2.3.4,10.11.12.13
+Add-DnsServerConditionalForwarderZone -Name "vaultcore.azure.net" -MasterServers 1.2.3.4,10.11.12.13
+Add-DnsServerConditionalForwarderZone -Name "azurewebsites.net" -MasterServers 1.2.3.4,10.11.12.13
