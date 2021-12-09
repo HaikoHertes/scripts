@@ -141,7 +141,7 @@ $DNSZonesToUse = ShowCheckedListBox -AllEntries $AllAzureDNSZones -CheckedEntrie
 
 Write-Host "Creating list of PowerShell statements..."
 $PSStatements = @()
-ForEach($DNSZone in ($DNSZonesToUse |Where-Object {$_ -ne "Cancel"}))
+ForEach($DNSZone in ($DNSZonesToUse |Where-Object {($_ -ne "Cancel") -and ($_ -ne "OK")}))
 {
     If($DNSZone -like "{region}*")
     {

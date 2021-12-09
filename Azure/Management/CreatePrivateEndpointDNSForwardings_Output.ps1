@@ -1,4 +1,3 @@
-Add-DnsServerConditionalForwarderZone -Name "OK" -MasterServers 1.2.3.4,10.11.12.13
 Add-DnsServerConditionalForwarderZone -Name "database.windows.net" -MasterServers 1.2.3.4,10.11.12.13
 Add-DnsServerConditionalForwarderZone -Name "blob.core.windows.net" -MasterServers 1.2.3.4,10.11.12.13
 Add-DnsServerConditionalForwarderZone -Name "table.core.windows.net" -MasterServers 1.2.3.4,10.11.12.13
