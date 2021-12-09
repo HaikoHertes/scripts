@@ -1,3 +1,15 @@
+<#
+    .DESCRIPTION
+        This script creates another script which includes all needed statements to create conditional forwarders on a Windows Server DNS-Server to 
+        forward DNS requests for Azure services with a Private Endpoint to any given DNS Servers running on Azure.
+    .NOTES
+        AUTHOR: Haiko Hertes
+                Microsoft MVP & Azure Architect
+        LASTEDIT: 2021/12/09
+#>
+
+[CmdletBinding()]
+
 $AllAzureDNSZones = 'azure-automation.net',
                     'database.windows.net',
                     'sql.azuresynapse.net',
