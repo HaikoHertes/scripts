@@ -10,6 +10,8 @@
 
 [CmdletBinding()]
 
+# List is taken from https://docs.microsoft.com/en-us/azure/private-link/private-endpoint-dns#azure-services-dns-zone-configuration
+# Any occurance of {region} will be replaced by the script
 $AllAzureDNSZones = 'azure-automation.net',
                     'database.windows.net',
                     'sql.azuresynapse.net',
