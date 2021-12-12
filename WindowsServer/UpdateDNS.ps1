@@ -30,28 +30,23 @@ param (
 $IpAdressMappingTable = @()
 
 $IpAdressMappingTable += [PSCustomObject]@{
-    Name = "Zitzschennet1" # This is just a name - not used yet
-    OldIpv4Adress = "94.136.173.66"
-    NewIpv4Adress = "85.190.178.xxx"
+    Name = "IP1" # This is just a name - not used yet
+    OldIpv4Adress = "11.22.33.44"
+    NewIpv4Adress = "55.66.77.88"
 }
 
 $IpAdressMappingTable += [PSCustomObject]@{
-    Name = "hertes.net" # This is just a name - not used yet
-    OldIpv4Adress = "94.136.173.67"
-    NewIpv4Adress = "85.190.178.135"
+    Name = "IP2" # This is just a name - not used yet
+    OldIpv4Adress = "10.10.10.10"
+    NewIpv4Adress = "20.20.20.20"
 }
 
 $IpAdressMappingTable += [PSCustomObject]@{
-    Name = "webseite4dich.de" # This is just a name - not used yet
-    OldIpv4Adress = "185.19.52.224"
-    NewIpv4Adress = "85.190.178.136"
+    Name = "IP3" # This is just a name - not used yet
+    OldIpv4Adress = "47.11.08.15"
+    NewIpv4Adress = "42.19.13.11"
 }
 
-$IpAdressMappingTable += [PSCustomObject]@{
-    Name = "Zitzschennet2" # This is just a name - not used yet
-    OldIpv4Adress = "185.19.53.224"
-    NewIpv4Adress = "85.190.178.xxx"
-}
 
 
 Try {
@@ -75,6 +70,7 @@ If($UpdateTTLs)
         If($SOA.RecordData.MinimumTimeToLive -ne $TTL) { 
             $NewSOA = $SOA.Clone() 
             $NewSOA.RecordData.MinimumTimeToLive = $TTL
+            Write-Host "Updating $DNSZone SOA Record with new TTL $NewTTLInMinutes minutes..."
             Set-DnsServerResourceRecord -NewInputObject $NewSOA -OldInputObject $SOA -ZoneName $DNSZone 
         }
 
@@ -83,6 +79,7 @@ If($UpdateTTLs)
                                                                         $OldObject = $_
                                                                         $NewObject = $OldObject.Clone()
                                                                         $NewObject.TimeToLive = $TTL
+                                                                        Write-Host "Updating $DNSZone A Record with new TTL $NewTTLInMinutes minutes - Hostname: $($NewObject.HostName)"
                                                                         Set-DnsServerResourceRecord -ZoneName $DNSZone -OldInputObject $OldObject -NewInputObject $NewObject
                                                                     }
     }
@@ -99,6 +96,7 @@ If($UpdateRecords)
                                                                         $OldObject = $_
                                                                         $NewObject = $OldObject.Clone()
                                                                         $NewObject.RecordData.IPv4Address = ($IpAdressMapping.NewIpv4Adress)
+                                                                        Write-Host "Updating $DNSZone A Record with new IP $($IpAdressMapping.NewIpv4Adress) - Hostname: $($NewObject.HostName)"
                                                                         Set-DnsServerResourceRecord -ZoneName $DNSZone -OldInputObject $OldObject -NewInputObject $NewObject
                                                                     }
         }
