@@ -1,4 +1,8 @@
 <#
+    .SYNOPSIS
+
+    Adds already discovered Servers in Azure Migrate into an already existing assessment group via REST-Calls.
+
     .DESCRIPTION
         tbd - no error handling yet
     .EXAMPLE
@@ -8,6 +12,14 @@
             -AzMigrateProjectName "SomeProject" `
             -AzMigrateGroupName "SomeGroup" `
             -ServerNames "SomeServer1","SomeServer2"
+    .EXAMPLE
+        \GroupAzMigrateServers.ps1 `
+            -SubscriptionId "123456-1c32-7890-a6bd-08154711faa" `
+            -ResourceGroupName "RG-SomeRG" `
+            -AzMigrateProjectName "SomeProject" `
+            -AzMigrateGroupName "SomeGroup" `
+            -ServerNames ((Import-CSV -Path "C:\servers.csv" -Delimiter ";").Hostname)
+                
     .NOTES
         AUTHOR: Haiko Hertes
                 Microsoft MVP & Azure Architect
