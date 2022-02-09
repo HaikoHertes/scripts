@@ -57,12 +57,7 @@ param (
     $ServerNames
 )
 
-[string]$SubscriptionId = "26655ce5-1c32-4693-a6bd-505410055faa"
-[string]$ResourceGroupName = "RG-Demos"
-[string]$AzMigrateProjectName = "DemoMigration"
-[string]$AzMigrateGroupName = "NeueGruppe2"
-[string[]]$ServerNames = ("SERVER4 - Mail","SERVER5 - Web")
-
+# Login to Azure
 try
 {
     Connect-AzAccount -Subscription $SubscriptionId -WarningAction SilentlyContinue -ErrorAction Stop
@@ -74,6 +69,7 @@ catch
 }
 Write-Debug "Login successfull!"
 
+# Switching Context into right Tenant and Subscription
 try {
     Set-AzContext -SubscriptionId $SubscriptionId -WarningAction SilentlyContinue -ErrorAction Stop
 }
@@ -84,7 +80,7 @@ catch
 }
 Write-Debug "Switching Subscription context successfull!"
 
-
+# Getting the "internal" Name of the Azure Migrate Assessment project (which is not the same as the Migrate Project itself)
 $AssessmentProject = Invoke-AzRestMethod -Method GET -Path "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.Migrate/assessmentProjects?api-version=2019-10-01"
 If(($AssessmentProject | Measure-Object).Count -lt 1)
 {
@@ -95,7 +91,7 @@ else {
     Write-Debug "Assessment project $InternalAzMigrateProjectName found!"
 }
 
-
+# Getting the IDs of the Azure Migrate discovered systems
 $AllMachines = Invoke-AzRestmethod -Method GET -Path "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.Migrate/assessmentProjects/$InternalAzMigrateProjectName/machines?api-version=2019-10-01"
 $AllMachines = ($AllMachines.Content | ConvertFrom-Json).value
 If($AllMachines.Count -lt 1)
@@ -107,6 +103,7 @@ else {
     Write-Debug "Found $($AllMachines.Count) total machines, from which $($RelevantMachines.Count) out of given $($ServerNames.Count) are relevant in Assessment project $InternalAzMigrateProjectName"
 }
 
+# Searching for the Group
 $Group = Invoke-AzRestmethod -Method GET -Path "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.Migrate/assessmentProjects/$InternalAzMigrateProjectName/groups/$AzMigrateGroupName/?api-version=2019-10-01"
 If(($Group.Content | ConvertFrom-Json).name -notcontains $AzMigrateGroupName)
 {
@@ -124,6 +121,7 @@ If(($Group.Content | ConvertFrom-Json).name -notcontains $AzMigrateGroupName)
           'areAssessmentsRunning': false    
         }
       }"
+    # Creating the group as it is not existing yet
     $NewGroup = Invoke-AzRestmethod -Method PUT -Path "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.Migrate/assessmentProjects/$InternalAzMigrateProjectName/groups/$AzMigrateGroupName/?api-version=2019-10-01" -Payload $RESTPayload
     If($NewGroup.StatusCode -ne 200)
     {
@@ -131,6 +129,7 @@ If(($Group.Content | ConvertFrom-Json).name -notcontains $AzMigrateGroupName)
     }
 }
 
+# Adding the found systems to the group
 $RESTPayload = "{
                     'properties': {
                         'machines': ['$(([string]($RelevantMachines.id)).Replace(" ","','"))'],
