@@ -140,6 +140,14 @@ ForEach($Subscription in $AllSubscriptions)
         $NexExtensions = @()
         ForEach($VM in (Get-AzVM -Status | Where-Object PowerState -like "*running*"))
         {
+            If($VM.StorageProfile.OsDisk.OsType -eq "Linux")
+            {
+                $ExtensionName = "OmsAgentForLinux"
+            }
+            else {
+                $ExtensionName = "MicrosoftMonitoringAgent"
+            }
+
             $Extensions = (Get-AzVMExtension -ResourceGroupName $VM.ResourceGroupName -VMName $VM.Name)
             If((($Extensions.ExtensionType -contains "MicrosoftMonitoringAgent") -or 
                 ($Extensions.ExtensionType -contains "OmsAgentForLinux"))
@@ -149,11 +157,11 @@ ForEach($Subscription in $AllSubscriptions)
                 If(!$SkipIfExisting)
                 {
                     "Installing MMA..."
-                    $NexExtensions += Set-AzVMExtension -ExtensionName "MicrosoftMonitoringAgent" `
+                    $NexExtensions += Set-AzVMExtension -ExtensionName $ExtensionName `
                         -ResourceGroupName $VM.ResourceGroupName `
                         -VMName $VM.Name `
                         -Publisher "Microsoft.EnterpriseCloud.Monitoring" `
-                        -ExtensionType "MicrosoftMonitoringAgent" `
+                        -ExtensionType $ExtensionName `
                         -TypeHandlerVersion 1.0 `
                         -Settings $WorkspacePublicSettings `
                         -ProtectedSettings $WorkspaceProtectedSettings `
@@ -165,11 +173,11 @@ ForEach($Subscription in $AllSubscriptions)
             else {
                 "VM $($VM.Name) is missing the right Agent"
                 "Installing MMA..."
-                $NexExtensions += Set-AzVMExtension -ExtensionName "MicrosoftMonitoringAgent" `
+                $NexExtensions += Set-AzVMExtension -ExtensionName $ExtensionName `
                     -ResourceGroupName $VM.ResourceGroupName `
                     -VMName $VM.Name `
                     -Publisher "Microsoft.EnterpriseCloud.Monitoring" `
-                    -ExtensionType "MicrosoftMonitoringAgent" `
+                    -ExtensionType $ExtensionName `
                     -TypeHandlerVersion 1.0 `
                     -Settings $WorkspacePublicSettings `
                     -ProtectedSettings $WorkspaceProtectedSettings `
