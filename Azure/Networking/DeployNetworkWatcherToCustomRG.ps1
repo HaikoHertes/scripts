@@ -1,6 +1,36 @@
-$regionsToUse = ("westeurope","northeurope","germanywestcentral")
-$SubscriptionsToUse = "PT_SUB_NAMES_HERE","OR_USE_SUB_IDS"
-$ResourceGroupNameToUse = "RG-NetworkWatcher"
+<#
+    .SYNOPSIS
+    Adds Network Watchers into custom defined Resource Groups for each given location and Subscription.
+    .DESCRIPTION
+        
+    Usually, Network Watcher will be created in some Azure-provided Resource Group. 
+	As the naming might not fit your scheme, you can use this script to define a custom Resource Group. 
+	It will be created as well if not existing.
+
+    .EXAMPLE
+        .\DeployNetworkWatcherToCustomRG.ps1 `
+            -regionsToUse "westeurope","northeurope"
+            -SubscriptionsToUse "Sub1","Sub2" `
+            -ResourceGroupNameToUse "RG-NetworkWatcher"
+                
+    .NOTES
+        AUTHOR: Haiko Hertes
+                Microsoft MVP & Azure Architect
+        LASTEDIT: 2022/03/08
+#>
+
+[CmdletBinding()]
+param (
+	[string[]]
+	$regionsToUse = ("westeurope","northeurope","germanywestcentral"),
+
+	[parameter(Mandatory=$true)]
+	[string[]]
+	$SubscriptionsToUse, # ("PT_SUB_NAMES_HERE","OR_USE_SUB_IDS")
+
+	[string]
+	$ResourceGroupNameToUse = "RG-NetworkWatcher"
+)
 
 Clear-AzContext -Scope Process
 
