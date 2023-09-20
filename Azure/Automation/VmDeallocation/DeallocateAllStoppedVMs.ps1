@@ -10,30 +10,16 @@
 #>
 
 
-# Login to Azure with AzureRunAsConnection
-$connectionName = "AzureRunAsConnection" 
+# Login to Azure using system-assigned managed identity
 try
 {
-    # Get the connection "AzureRunAsConnection "
-    $ServicePrincipalConnection=Get-AutomationConnection -Name $connectionName         
-    
-    "Logging into Azure using service principal connection $connectionName..."
-    Login-AzureRmAccount `
-        -ServicePrincipal `
-        -TenantId $ServicePrincipalConnection.TenantId `
-        -ApplicationId $ServicePrincipalConnection.ApplicationId `
-        -CertificateThumbprint $ServicePrincipalConnection.CertificateThumbprint 
-
+    "Logging into Azure using system assigned managed identity..."
+    Connect-AzAccount -Identity
 }
-catch {
-    if (!$ServicePrincipalConnection)
-    {
-        $ErrorMessage = "Connection $connectionName not found."
-        throw $ErrorMessage
-    } else{
-        Write-Error -Message $_.Exception
-        throw $_.Exception
-    }
+catch
+{
+    Write-Error -Message $_.Exception
+    throw $_.Exception
 }
 
 # Get all VMs in all RGs
