@@ -1,5 +1,8 @@
-$NIC1 = "10G_right_Port"
-$NIC2 = "10G_left_Port"
+$NIC1 = "10G_right"
+$NIC2 = "10G_left"
+
+#$NIC1 = "Ethernet"
+#$NIC2 = "Ethernet 2"
 
 Set-NetAdapterAdvancedProperty $NIC1 -RegistryKeyword VlanID -RegistryValue "101"
 Set-NetAdapterAdvancedProperty $NIC2 -RegistryKeyword VlanID -RegistryValue "102"
@@ -67,3 +70,10 @@ Get-PhysicalDisk -CanPool $True| Where-Object DeviceID -ne 0 | ForEach-Object {
 #Add-PhysicalDisk -StoragePool (Get-StoragePool "S2D on HVCLUSTER01") -PhysicalDisks (Get-PhysicalDisk | Where DeviceID -ne 0 | Where CanPool -eq $True) -Verbose
 
 Get-StoragePool -IsPrimordial $False | Add-PhysicalDisk -PhysicalDisks (Get-PhysicalDisk -CanPool $True | Where-Object DeviceID -ne 0)
+
+
+# Jumbo Frames / Packets
+#Get-NetAdapterAdvancedProperty -Name "10G*" -DisplayName "Jumbo*" | Set-NetAdapterAdvancedProperty -RegistryValue "9014"
+#Get-NetAdapterAdvancedProperty -Name "vSMB1","vSMB2" -DisplayName "Jumbo*" | Set-NetAdapterAdvancedProperty -RegistryValue "9014"
+Get-NetAdapterAdvancedProperty -Name "10G*" -DisplayName "Jumbo*" | Set-NetAdapterAdvancedProperty -RegistryValue "4088"
+Get-NetAdapterAdvancedProperty -Name "vSMB1","vSMB2" -DisplayName "Jumbo*" | Set-NetAdapterAdvancedProperty -RegistryValue "4088"
