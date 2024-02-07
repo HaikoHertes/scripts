@@ -1,0 +1,16 @@
+resources
+| where type =~ "microsoft.network/networkinterfaces"
+| mv-expand properties.ipConfigurations
+| mv-expand applicationSecurityGroupId=properties_ipConfigurations.properties.applicationSecurityGroups
+| parse applicationSecurityGroupId with * "/applicationSecurityGroups/" applicationSecurityGroup '"' *
+| extend vmId = properties.virtualMachine.id
+| parse vmId with * "/virtualMachines/" vmName
+| extend peId = properties.privateEndpoint.id
+| parse peId with * "/privateEndpoints/" peName
+| where isnotnull(applicationSecurityGroupId)
+| extend endpointName = iff(isnotnull(vmId),vmName, peName)
+| extend endpointId = iff(isnotnull(vmId),vmId, peId)
+| extend endpointType = iff(isnotnull(vmId),"Virtual Machine","Private Endpoint")
+| project applicationSecurityGroup,applicationSecurityGroupId=applicationSecurityGroupId.id,endpointName,endpointId,endpointType
+| order by applicationSecurityGroup
+//| summarize make_list(endpointName) by tostring(applicationSecurityGroupId),applicationSecurityGroup
