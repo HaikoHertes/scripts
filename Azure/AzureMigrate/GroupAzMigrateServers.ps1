@@ -147,7 +147,12 @@ If(($Group.Content | ConvertFrom-Json).name -notcontains $AzMigrateGroupName)
     $NewGroup = Invoke-AzRestmethod -Method PUT -Path "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.Migrate/assessmentProjects/$InternalAzMigrateProjectName/groups/$AzMigrateGroupName/?api-version=2019-10-01" -Payload $RESTPayload
     If($NewGroup.StatusCode -ne 200)
     {
-        throw "Cannot create non-existing group $AzMigrateGroupName - aborting."
+        # Retrying once...
+        $NewGroup = Invoke-AzRestmethod -Method PUT -Path "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.Migrate/assessmentProjects/$InternalAzMigrateProjectName/groups/$AzMigrateGroupName/?api-version=2019-10-01" -Payload $RESTPayload
+        If($NewGroup.StatusCode -ne 200)
+        {
+            throw "Cannot create non-existing group $AzMigrateGroupName - aborting."
+        }            
     }
 }
 
