@@ -148,6 +148,7 @@ If(($Group.Content | ConvertFrom-Json).name -notcontains $AzMigrateGroupName)
     If($NewGroup.StatusCode -ne 200)
     {
         # Retrying once...
+        Write-Debug "1st Error - Retrying to create group once..."
         $NewGroup = Invoke-AzRestmethod -Method PUT -Path "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.Migrate/assessmentProjects/$InternalAzMigrateProjectName/groups/$AzMigrateGroupName/?api-version=2019-10-01" -Payload $RESTPayload
         If($NewGroup.StatusCode -ne 200)
         {
@@ -180,6 +181,7 @@ for($i=0; $i -lt $RelevantMachines.Count; $i+=$BatchSize)
         # ($Result.Content | ConvertFrom-Json).properties
 
         #Retrying once
+        Write-Debug "1st Error - Retrying batch once..."
         $Result = Invoke-AzRestMethod -Method POST `
                                 -Path "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.Migrate/assessmentProjects/$InternalAzMigrateProjectName/groups/$AzMigrateGroupName/updateMachines?api-version=2019-10-01" `
                                 -Payload $RESTPayload
@@ -190,10 +192,9 @@ for($i=0; $i -lt $RelevantMachines.Count; $i+=$BatchSize)
         }
         else {
             # For now, we are just skipping this batch...
+            Write-Debug "2nd Error - Skipping current batch..."
             
             # throw "Something went wrong - check details above"
         }
     }
-}
-
-   
+}  
