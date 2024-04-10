@@ -57,28 +57,50 @@ param (
     $ServerNames
 )
 
-# Login to Azure
-try
+# Trying to switch Context into right Subscription
+try 
 {
-    Connect-AzAccount -Subscription $SubscriptionId -WarningAction SilentlyContinue -ErrorAction Stop
+    $context = Get-AzContext -ListAvailable  | Where-Object {$_.Subscription -eq $SubsciptionId}
 }
 catch
 {
     write-output  $_.Exception.message;
-    throw "Error connecting to Azure!"
+    throw "Error getting current context - aborting"
 }
-Write-Debug "Login successfull!"
 
-# Switching Context into right Tenant and Subscription
-try {
-    Set-AzContext -SubscriptionId $SubscriptionId -WarningAction SilentlyContinue -ErrorAction Stop
-}
-catch
+If($context -eq $null)
 {
-    write-output  $_.Exception.message;
-    throw "Error switching to Subscription $SubscriptionId!"
+    # No context found for needed Subscription - login to Azure
+    try
+    {
+        Connect-AzAccount -Subscription $SubscriptionId -WarningAction SilentlyContinue -ErrorAction Stop
+        Write-Debug "Loging in to Azure successfull!"
+    }
+    catch {
+        write-output  $_.Exception.message;
+        throw "Error connecting to Azure - aborting"
+    }
 }
-Write-Debug "Switching Subscription context successfull!"
+
+try {
+    # Setting Context
+    Set-AzContext -SubscriptionId $SubscriptionId -WarningAction SilentlyContinue -ErrorAction Stop
+    Write-Debug "Switching Subscription context successfull!"    
+}
+catch {
+    # write-output  $_.Exception.message;
+    # Context might be outdated - so we need to re-login
+    try
+    {
+        Connect-AzAccount -Subscription $SubscriptionId -WarningAction SilentlyContinue -ErrorAction Stop
+        Write-Debug "Loging in to Azure successfull!"
+    }
+    catch {
+        write-output  $_.Exception.message;
+        throw "Error connecting to Azure - aborting"
+    }
+}
+    
 
 # Getting the "internal" Name of the Azure Migrate Assessment project (which is not the same as the Migrate Project itself)
 $AssessmentProject = Invoke-AzRestMethod -Method GET -Path "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.Migrate/assessmentProjects?api-version=2019-10-01"
