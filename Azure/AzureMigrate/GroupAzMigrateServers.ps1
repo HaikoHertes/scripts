@@ -156,26 +156,44 @@ If(($Group.Content | ConvertFrom-Json).name -notcontains $AzMigrateGroupName)
     }
 }
 
-# Adding the found systems to the group
-$RESTPayload = "{
-                    'properties': {
-                        'machines': ['$(([string]($RelevantMachines.id)).Replace(" ","','"))'],
-                        'operationType':'Add'
-                    }
-                }"
-$Result = Invoke-AzRestMethod -Method POST `
-                              -Path "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.Migrate/assessmentProjects/$InternalAzMigrateProjectName/groups/$AzMigrateGroupName/updateMachines?api-version=2019-10-01" `
-                              -Payload $RESTPayload
-
-If($Result.StatusCode -eq 200)
+# Adding the found systems to the group in batches of 50 servers each
+$BatchSize = 50
+for($i=0; $i -lt $RelevantMachines.Count; $i+=$BatchSize)
 {
-    Write-Host "Successfull!" -ForegroundColor "Green"
-}
-else {
-    $Result.Content | ConvertFrom-Json
-    ($Result.Content | ConvertFrom-Json).properties
-    throw "Something went wrong - check details above"
-    
+    Write-Debug "Adding $($BatchSize) machines to group $AzMigrateGroupName - Current Batch is $i..."
+    $RESTPayload = "{
+                        'properties': {
+                            'machines': ['$(([string](($RelevantMachines | Select-Object -Skip $i -First $BatchSize).id)).Replace(" ","','"))'],
+                            'operationType':'Add'
+                        }
+                    }"
+    $Result = Invoke-AzRestMethod -Method POST `
+                                -Path "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.Migrate/assessmentProjects/$InternalAzMigrateProjectName/groups/$AzMigrateGroupName/updateMachines?api-version=2019-10-01" `
+                                -Payload $RESTPayload
+
+    If($Result.StatusCode -eq 200)
+    {
+        Write-Debug "Successfull!"
+    }
+    else {
+        # $Result.Content | ConvertFrom-Json
+        # ($Result.Content | ConvertFrom-Json).properties
+
+        #Retrying once
+        $Result = Invoke-AzRestMethod -Method POST `
+                                -Path "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.Migrate/assessmentProjects/$InternalAzMigrateProjectName/groups/$AzMigrateGroupName/updateMachines?api-version=2019-10-01" `
+                                -Payload $RESTPayload
+
+        If($Result.StatusCode -eq 200)
+        {
+            Write-Debug "Successfull!"
+        }
+        else {
+            # For now, we are just skipping this batch...
+            
+            # throw "Something went wrong - check details above"
+        }
+    }
 }
 
    
