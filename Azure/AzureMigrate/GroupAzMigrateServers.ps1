@@ -113,8 +113,17 @@ else {
     Write-Debug "Assessment project $InternalAzMigrateProjectName found!"
 }
 
-# Getting the IDs of the Azure Migrate discovered systems
-$AllMachines = Invoke-AzRestmethod -Method GET -Path "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.Migrate/assessmentProjects/$InternalAzMigrateProjectName/machines?api-version=2019-10-01"
+# Getting the IDs of the Azure Migrate discovered systems - API will only return 100 per call, so we need to iterate here
+$AllMachines = $null
+$nextLink = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.Migrate/assessmentProjects/$InternalAzMigrateProjectName/machines?api-version=2019-10-01"
+do {
+    $APIResult = Invoke-AzRestmethod -Method GET -Path $nextLink
+    $nextLink = ($APIResult.Content | ConvertFrom-JSON).nextLink
+    $AllMachines += $APIResult
+} while (
+    $nextLink -ne $null
+)
+
 $AllMachines = ($AllMachines.Content | ConvertFrom-Json).value
 If($AllMachines.Count -lt 1)
 {
