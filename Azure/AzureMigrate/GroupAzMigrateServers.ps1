@@ -114,11 +114,17 @@ else {
 }
 
 # Getting the IDs of the Azure Migrate discovered systems - API will only return 100 per call, so we need to iterate here
-$AllMachines = $null
+Set-AzContext -Subscription $SubscriptionId -WarningAction SilentlyContinue -ErrorAction Stop
+$AllMachines = @()
 $nextLink = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.Migrate/assessmentProjects/$InternalAzMigrateProjectName/machines?api-version=2019-10-01"
+Write-Debug "Getting all machines from Assessment project $InternalAzMigrateProjectName..."
 do {
     $APIResult = Invoke-AzRestmethod -Method GET -Path $nextLink
     $nextLink = ($APIResult.Content | ConvertFrom-JSON).nextLink
+    if ($nextLink -ne $null)
+    {
+        $nextLink = $nextLink.Replace("https://management.azure.com","") # Invoke-AzRestmethod expects an Path starting with /subscriptions... instead of https://management.azure.com, but the response gives a nextPageLink including this
+    }   
     $AllMachines += $APIResult
 } while (
     $nextLink -ne $null
@@ -133,6 +139,7 @@ else {
     $RelevantMachines = $AllMachines | Where-Object {$_.Properties.displayName -in $ServerNames}
     Write-Debug "Found $($AllMachines.Count) total machines, from which $($RelevantMachines.Count) out of given $($ServerNames.Count) are relevant in Assessment project $InternalAzMigrateProjectName"
 }
+
 
 # Searching for the Group
 $Group = Invoke-AzRestmethod -Method GET -Path "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.Migrate/assessmentProjects/$InternalAzMigrateProjectName/groups/$AzMigrateGroupName/?api-version=2019-10-01"
