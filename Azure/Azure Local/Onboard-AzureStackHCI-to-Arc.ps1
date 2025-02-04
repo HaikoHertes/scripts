@@ -17,6 +17,8 @@ $LoginWith = "ServicePrincipal" # Use "DeviceCode" for device code login, "Inter
 $AppId= "PUT-APP-ID-HERE" # Only needed when using Service Principal login
 $ClientSecret = "PUT-CLIENT-SECRET-HERE" # Only needed when using Service Principal login
 
+$Action = "Onboarding" # Use "Onboarding" to onboard the machine to Arc, "Offboarding" to offboard the machine from Arc
+
 #Define the proxy address if your Azure Local deployment accesses the internet via proxy
 #If you do not use a proxy, comment out the line below
 # $ProxyServer = "http://proxyaddress:port"
@@ -39,9 +41,19 @@ $ARMtoken = (Get-AzAccessToken -WarningAction SilentlyContinue).Token
 #Get the Account ID for the registration
 $id = (Get-AzContext).Account.Id
 
-#Invoke the registration script depending on if a proxy is used or not
-If([string]::IsNullOrEmpty($ProxyServer)) {
-    Invoke-AzStackHciArcInitialization -SubscriptionID $Subscription -ResourceGroup $RG -TenantID $TenantId -Region $Region -Cloud "AzureCloud" -ArmAccessToken $ARMtoken -AccountID $id
-} Else {
-    Invoke-AzStackHciArcInitialization -SubscriptionID $Subscription -ResourceGroup $RG -TenantID $TenantId -Region $Region -Cloud "AzureCloud" -ArmAccessToken $ARMtoken -AccountID $id -Proxy $ProxyServer
+If($Action -eq "Offboarding" ) {
+    #Invoke the de-registration script depending on if a proxy is used or not
+    If([string]::IsNullOrEmpty($ProxyServer)) {
+        Remove-AzStackHciArcInitialization -SubscriptionID $Subscription -ResourceGroup $RG -TenantID $TenantId -Region $Region -Cloud "AzureCloud" -ArmAccessToken $ARMtoken -AccountID $id        
+    } Else {
+        Remove-AzStackHciArcInitialization -SubscriptionID $Subscription -ResourceGroup $RG -TenantID $TenantId -Region $Region -Cloud "AzureCloud" -ArmAccessToken $ARMtoken -AccountID $id -Proxy $ProxyServer
+    }
+
+} else { 
+    #Invoke the registration script depending on if a proxy is used or not
+    If([string]::IsNullOrEmpty($ProxyServer)) {
+        Invoke-AzStackHciArcInitialization -SubscriptionID $Subscription -ResourceGroup $RG -TenantID $TenantId -Region $Region -Cloud "AzureCloud" -ArmAccessToken $ARMtoken -AccountID $id
+    } Else {
+        Invoke-AzStackHciArcInitialization -SubscriptionID $Subscription -ResourceGroup $RG -TenantID $TenantId -Region $Region -Cloud "AzureCloud" -ArmAccessToken $ARMtoken -AccountID $id -Proxy $ProxyServer
+    }
 }
