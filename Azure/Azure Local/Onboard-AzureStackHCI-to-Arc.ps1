@@ -44,9 +44,9 @@ $id = (Get-AzContext).Account.Id
 If($Action -eq "Offboarding" ) {
     #Invoke the de-registration script depending on if a proxy is used or not
     If([string]::IsNullOrEmpty($ProxyServer)) {
-        Remove-AzStackHciArcInitialization -SubscriptionID $Subscription -ResourceGroup $RG -TenantID $TenantId -Region $Region -Cloud "AzureCloud" -ArmAccessToken $ARMtoken -AccountID $id        
+        Remove-AzStackHciArcInitialization -SubscriptionID $Subscription -ResourceGroup $RG -TenantID $TenantId -Cloud "AzureCloud" -ArmAccessToken $ARMtoken -AccountID $id        
     } Else {
-        Remove-AzStackHciArcInitialization -SubscriptionID $Subscription -ResourceGroup $RG -TenantID $TenantId -Region $Region -Cloud "AzureCloud" -ArmAccessToken $ARMtoken -AccountID $id -Proxy $ProxyServer
+        Remove-AzStackHciArcInitialization -SubscriptionID $Subscription -ResourceGroup $RG -TenantID $TenantId -Cloud "AzureCloud" -ArmAccessToken $ARMtoken -AccountID $id -Proxy $ProxyServer
     }
 
 } else { 
