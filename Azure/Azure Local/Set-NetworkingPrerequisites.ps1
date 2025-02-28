@@ -212,7 +212,22 @@ If(!$MgmtIsCompute)
 }
 
 Write-Host "Setting network adapter adresses for management intent now..."
-$MgmtNic | New-NetIPAddress -IPAddress $MgmtIp -PrefixLength (Convert-SubnetMaskToPrefix -SubnetMask $MgmtSubnet) -DefaultGateway $MgmtGateway
+#$MgmtNic | New-NetIPAddress -IPAddress $MgmtIp -PrefixLength (Convert-SubnetMaskToPrefix -SubnetMask $MgmtSubnet) -DefaultGateway $MgmtGateway
+
+# Retrieve the current IP configuration of the network interface
+$ipConfig = Get-NetIPConfiguration -InterfaceIndex $MgmtNic.ifIndex
+
+# Check if a default gateway is already assigned
+if ($ipConfig.IPv4DefaultGateway -eq $null) {
+    # No default gateway assigned, proceed to set the new IP address and default gateway
+    $MgmtNic | New-NetIPAddress -IPAddress $MgmtIp -PrefixLength (Convert-SubnetMaskToPrefix -SubnetMask $MgmtSubnet) -DefaultGateway $MgmtGateway
+} else {
+    # Default gateway already exists, handle accordingly
+    Write-Host "Default gateway already exists for interface MANAGEMENT NIC... Only setting IP adress"
+    $MgmtNic | Set-NetIPAddress -IPAddress $MgmtIp -PrefixLength (Convert-SubnetMaskToPrefix -SubnetMask $MgmtSubnet)
+}
+
+
 $MgmtNic | Set-DnsClientServerAddress -ServerAddresses $MgmtDns1,$MgmtDns2
 Write-Host "Renaming network adapter to 'Management-01-NIC'..."
 $MgmtNic = $MgmtNic | Rename-NetAdapter -NewName "Management-01-NIC" -PassThru
