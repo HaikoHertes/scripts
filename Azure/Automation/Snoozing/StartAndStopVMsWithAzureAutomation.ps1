@@ -2,18 +2,41 @@
     .DESCRIPTION
         This runbooks shuts down all Azure VMs in all Ressource Groups that have the Tag "AUTOSHUTDOWN" set to "true" at the time given in "AUTOSHUTDOWNTIME" in the format "HH:mm" and
         starts all Azure VMs in all Ressource Groups that have the Tag "AUTOSTARTUP" set to "true" at the UTC time given in "AUTOSTARTUPTIME" in the format "HH:mm".
+        
+        Optional Tags to control days of execution:
+        - "AUTOSTARTUPDAYS": Format "xoooooo" where x=execute, o=skip (Mon-Sun). Example: "xoooooo" = Monday only, "xxxxxxoo" = Mon-Fri
+        - "AUTOSHUTDOWNDAYS": Same format as above. If not specified, action runs every day
+        
         Attention: This need the Azure Automation modules being updated - take a look on this video: https://www.youtube.com/watch?v=D61XWOeN_w8&t=11s (08:30)
         The Script will only touch a VM if the given time to start / stop is less than an hour ago! (Otherwise we would run into strange behavior in certain situations)
     .NOTES
         AUTHOR: Haiko Hertes, SoftwareONE
                 Microsoft Azure MVP & Azure Architect
-        LASTEDIT: 2021/02/17
+        LASTEDIT: 2026/01/23 - Added parallel processing and day-of-week tags
 #>
 
 # For comparison, we need the current UTC time in Germany
 #$CurrentDateTimeUTC = (Get-Date).ToUniversalTime()
 $CurrentDateTimeGER = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,"W. Europe Standard Time")
 "Starttime: $(([System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,""W. Europe Standard Time"")).tostring(""HH:mm:ss""))"
+
+# Function to check if current day matches the day pattern
+# Pattern format: "xoooooo" = Mon-Sun, x=execute, o=skip
+function Test-DayOfWeekMatch {
+    param(
+        [string]$DayPattern
+    )
+    
+    if ([string]::IsNullOrWhiteSpace($DayPattern) -or $DayPattern.Length -ne 7) {
+        return $true  # If pattern is invalid or not set, allow execution any day
+    }
+    
+    $CurrentDay = [int][System.DayOfWeek]::([System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,"W. Europe Standard Time").DayOfWeek)
+    # Convert .NET DayOfWeek (Sunday=0) to our format (Monday=0), so we shift by 1
+    $CurrentDay = ($CurrentDay + 6) % 7
+    
+    return $DayPattern[$CurrentDay] -eq 'x'
+}
 
 # Login to Azure using system-assigned managed identity
 try
@@ -59,8 +82,15 @@ $AllVms | ForEach-Object {
         If($PSItem.Tags["$($PSItem.Tags.Keys | Where {$_.toLower() -ieq "autostartup"})"] -eq "true")
         {
             #"VM hast autostartup set to true"
+            # Check day-of-week pattern if specified
+            $DayPattern = $PSItem.Tags.Keys | Where {$_.toLower() -ieq "autostartupdays"}
+            if ($DayPattern) {
+                $DayPattern = $PSItem.Tags[$DayPattern]
+            }
+            
             # Do we need to startup the VM now / was the startup time set between now and one hour ago?
             If(
+                (Test-DayOfWeekMatch -DayPattern $DayPattern) -and
                 $CurrentDateTimeGER -ge [datetime]::ParseExact($PSItem.Tags["$($PSItem.Tags.Keys | Where {$_.toLower() -ieq "autostartuptime"})"],'HH:mm',$null) -and 
                 $CurrentDateTimeGER.AddHours(-1) -le [datetime]::ParseExact($PSItem.Tags["$($PSItem.Tags.Keys | Where {$_.toLower() -ieq "autostartuptime"})"],'HH:mm',$null) -and 
                 $PSItem.PowerState -ne "VM running"
@@ -79,11 +109,18 @@ $AllVms | ForEach-Object {
         If($PSItem.Tags["$($PSItem.Tags.Keys | Where {$_.toLower() -ieq "autoshutdown"})"] -eq "true")
         {
             #"VM hast autoshutdown set to true"
+            # Check day-of-week pattern if specified
+            $DayPattern = $PSItem.Tags.Keys | Where {$_.toLower() -ieq "autoshutdowndays"}
+            if ($DayPattern) {
+                $DayPattern = $PSItem.Tags[$DayPattern]
+            }
+            
             # Do we need to shutdown the VM now / was the shutdown time set between now and one hour ago?
             If(
-            $CurrentDateTimeGER -ge [datetime]::ParseExact($PSItem.Tags["$($PSItem.Tags.Keys | Where {$_.toLower() -ieq "autoshutdowntime"})"],'HH:mm',$null) -and 
-            $CurrentDateTimeGER.AddHours(-1) -le [datetime]::ParseExact($PSItem.Tags["$($PSItem.Tags.Keys | Where {$_.toLower() -ieq "autoshutdowntime"})"],'HH:mm',$null) -and 
-            $PSItem.PowerState -eq "VM running"
+                (Test-DayOfWeekMatch -DayPattern $DayPattern) -and
+                $CurrentDateTimeGER -ge [datetime]::ParseExact($PSItem.Tags["$($PSItem.Tags.Keys | Where {$_.toLower() -ieq "autoshutdowntime"})"],'HH:mm',$null) -and 
+                $CurrentDateTimeGER.AddHours(-1) -le [datetime]::ParseExact($PSItem.Tags["$($PSItem.Tags.Keys | Where {$_.toLower() -ieq "autoshutdowntime"})"],'HH:mm',$null) -and 
+                $PSItem.PowerState -eq "VM running"
             )
             {
                 $VmsToStop += $PSItem
@@ -99,6 +136,7 @@ Write-Output "$($VmsToStop.Name)"
 
 $Jobs = @()
 
+# Process both shutdown and startup in parallel
 # Iterate through VmsToStop and shut them down
 ForEach ($VM in ($VmsToStop | Sort-Object Id)) 
 {
@@ -128,9 +166,22 @@ ForEach ($VM in ($VmsToStart | Sort-Object Id) )
     $Jobs += Start-AzVm -Name $VM.Name -ResourceGroupName $VM.ResourceGroupName -AsJob
 }
 
-"Waiting for all Jobs to complete..."
-$Jobs | Wait-Job -Timeout 120
-"Jobs completed!"
-$Jobs
+# Only wait if there are jobs to wait for
+if ($Jobs.Count -gt 0) {
+    "Waiting for all $($Jobs.Count) VM operations to complete (max 120 seconds)..."
+    $Jobs | Wait-Job -Timeout 120 | Out-Null
+    "VM operations completed!"
+    
+    # Display job results
+    foreach ($Job in $Jobs) {
+        $Result = $Job | Receive-Job -ErrorAction SilentlyContinue
+        if ($Result) {
+            Write-Output "Job $($Job.Name) result: $($Result -join '; ')"
+        }
+    }
+}
+else {
+    "No VMs require action at this time."
+}
 
 "Endtime: $(([System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,""W. Europe Standard Time"")).tostring(""HH:mm:ss""))"
