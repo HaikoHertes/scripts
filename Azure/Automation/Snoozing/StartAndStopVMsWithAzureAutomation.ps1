@@ -1,3 +1,14 @@
+[CmdletBinding()]
+param(
+    [int]$ThrottleLimit = 8,
+    [string]$AutoStartupTagName = "autostartup",
+    [string]$AutoStartupTimeTagName = "autostartuptime",
+    [string]$AutoStartupDaysTagName = "autostartupdays",
+    [string]$AutoShutdownTagName = "autoshutdown",
+    [string]$AutoShutdownTimeTagName = "autoshutdowntime",
+    [string]$AutoShutdownDaysTagName = "autoshutdowndays"
+)
+
 <#
     .DESCRIPTION
         This runbooks shuts down all Azure VMs in all Ressource Groups that have the Tag "AUTOSHUTDOWN" set to "true" at the time given in "AUTOSHUTDOWNTIME" in the format "HH:mm" and
@@ -17,6 +28,7 @@
 
 # For comparison, we need the current UTC time in Germany
 #$CurrentDateTimeUTC = (Get-Date).ToUniversalTime()
+$ScriptStartTime = Get-Date
 $CurrentDateTimeGER = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,"W. Europe Standard Time")
 "Starttime: $(([System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,""W. Europe Standard Time"")).tostring(""HH:mm:ss""))"
 
@@ -51,12 +63,14 @@ catch
 }
 
 $AllSubscriptions = Get-AzSubscription
-[array]$AllVms = @()
-ForEach($Sub in $AllSubscriptions)
-{
-    $Sub | Set-AzContext -WarningAction SilentlyContinue | out-null
-    $AllVms += Get-AzVm -Status
-}
+"Getting VMs from $($AllSubscriptions.Count) subscription(s) in parallel with ThrottleLimit=$ThrottleLimit..."
+
+# Fetch VMs from all subscriptions in parallel
+[array]$AllVms = @($AllSubscriptions | ForEach-Object -Parallel {
+    $Sub = $_
+    $Sub | Set-AzContext -WarningAction SilentlyContinue | Out-Null
+    Get-AzVm -Status
+} -ThrottleLimit $ThrottleLimit)
 
 "Found $($AllVms.Count) VMs..."
 
@@ -65,67 +79,78 @@ ForEach($Sub in $AllSubscriptions)
 [array]$VmsToStart = @()
 [array]$VmsToStop = @()
 
-# And here comes the ugly part - I know there is a shorter way for this, but this would become un-read-able for others...
-$AllVms | ForEach-Object {
+# Process VMs in parallel to determine which ones need to start/stop
+"Processing $($AllVms.Count) VMs in parallel with ThrottleLimit=$ThrottleLimit..."
 
-    #"We are handling VM $($PSItem.Name) now"
-    #"VM has these Tags:"
-    #"$($PSItem.Tags.Keys)"
-
+$VMActions = @($AllVms | ForEach-Object -Parallel {
+    $VM = $_
     $VmToStart = $false
+    $AutoStartupTagName = $Using:AutoStartupTagName
+    $AutoStartupTimeTagName = $Using:AutoStartupTimeTagName
+    $AutoStartupDaysTagName = $Using:AutoStartupDaysTagName
+    $AutoShutdownTagName = $Using:AutoShutdownTagName
+    $AutoShutdownTimeTagName = $Using:AutoShutdownTimeTagName
+    $AutoShutdownDaysTagName = $Using:AutoShutdownDaysTagName
 
     # Does the VM has Startup Tags?
-    if(($PSItem.Tags.Keys -icontains "autostartup") -and ($PSItem.Tags.Keys -icontains "autostartuptime"))
+    if(($VM.Tags.Keys -icontains $AutoStartupTagName) -and ($VM.Tags.Keys -icontains $AutoStartupTimeTagName))
     {
-        #"VM has Startup Tags"
         # Is the Startup Tag set to true?
-        If($PSItem.Tags["$($PSItem.Tags.Keys | Where {$_.toLower() -ieq "autostartup"})"] -eq "true")
+        If($VM.Tags["$($VM.Tags.Keys | Where-Object {$_.toLower() -ieq $AutoStartupTagName.toLower()})"] -eq "true")
         {
-            #"VM hast autostartup set to true"
             # Check day-of-week pattern if specified
-            $DayPattern = $PSItem.Tags.Keys | Where {$_.toLower() -ieq "autostartupdays"}
+            $DayPattern = $VM.Tags.Keys | Where-Object {$_.toLower() -ieq $AutoStartupDaysTagName.toLower()}
             if ($DayPattern) {
-                $DayPattern = $PSItem.Tags[$DayPattern]
+                $DayPattern = $VM.Tags[$DayPattern]
             }
             
             # Do we need to startup the VM now / was the startup time set between now and one hour ago?
+            $CurrentDateTimeGER = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,"W. Europe Standard Time")
             If(
                 (Test-DayOfWeekMatch -DayPattern $DayPattern) -and
-                $CurrentDateTimeGER -ge [datetime]::ParseExact($PSItem.Tags["$($PSItem.Tags.Keys | Where {$_.toLower() -ieq "autostartuptime"})"],'HH:mm',$null) -and 
-                $CurrentDateTimeGER.AddHours(-1) -le [datetime]::ParseExact($PSItem.Tags["$($PSItem.Tags.Keys | Where {$_.toLower() -ieq "autostartuptime"})"],'HH:mm',$null) -and 
-                $PSItem.PowerState -ne "VM running"
+                $CurrentDateTimeGER -ge [datetime]::ParseExact($VM.Tags["$($VM.Tags.Keys | Where-Object {$_.toLower() -ieq $AutoStartupTimeTagName.toLower()})"],'HH:mm',$null) -and 
+                $CurrentDateTimeGER.AddHours(-1) -le [datetime]::ParseExact($VM.Tags["$($VM.Tags.Keys | Where-Object {$_.toLower() -ieq $AutoStartupTimeTagName.toLower()})"],'HH:mm',$null) -and 
+                $VM.PowerState -ne "VM running"
                )
             {
                 $VmToStart = $true
-                $VmsToStart += $PSItem
+                [PSCustomObject]@{ Action = 'Start'; VM = $VM }
             }
         }
     }
     # Does the VM has Shutdown Tags and is not planned for startup (we consider startup to have higher priority)?
-    if(($PSItem.Tags.Keys -icontains "autoshutdown") -and ($PSItem.Tags.Keys -icontains "autoshutdowntime") -and (!$VmToStart))
+    if(($VM.Tags.Keys -icontains $AutoShutdownTagName) -and ($VM.Tags.Keys -icontains $AutoShutdownTimeTagName) -and (!$VmToStart))
     {
-        #"VM has Shutdown Tags"
         # Is the Shutdown Tag set to true?
-        If($PSItem.Tags["$($PSItem.Tags.Keys | Where {$_.toLower() -ieq "autoshutdown"})"] -eq "true")
+        If($VM.Tags["$($VM.Tags.Keys | Where-Object {$_.toLower() -ieq $AutoShutdownTagName.toLower()})"] -eq "true")
         {
-            #"VM hast autoshutdown set to true"
             # Check day-of-week pattern if specified
-            $DayPattern = $PSItem.Tags.Keys | Where {$_.toLower() -ieq "autoshutdowndays"}
+            $DayPattern = $VM.Tags.Keys | Where-Object {$_.toLower() -ieq $AutoShutdownDaysTagName.toLower()}
             if ($DayPattern) {
-                $DayPattern = $PSItem.Tags[$DayPattern]
+                $DayPattern = $VM.Tags[$DayPattern]
             }
             
             # Do we need to shutdown the VM now / was the shutdown time set between now and one hour ago?
+            $CurrentDateTimeGER = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,"W. Europe Standard Time")
             If(
                 (Test-DayOfWeekMatch -DayPattern $DayPattern) -and
-                $CurrentDateTimeGER -ge [datetime]::ParseExact($PSItem.Tags["$($PSItem.Tags.Keys | Where {$_.toLower() -ieq "autoshutdowntime"})"],'HH:mm',$null) -and 
-                $CurrentDateTimeGER.AddHours(-1) -le [datetime]::ParseExact($PSItem.Tags["$($PSItem.Tags.Keys | Where {$_.toLower() -ieq "autoshutdowntime"})"],'HH:mm',$null) -and 
-                $PSItem.PowerState -eq "VM running"
+                $CurrentDateTimeGER -ge [datetime]::ParseExact($VM.Tags["$($VM.Tags.Keys | Where-Object {$_.toLower() -ieq $AutoShutdownTimeTagName.toLower()})"],'HH:mm',$null) -and 
+                $CurrentDateTimeGER.AddHours(-1) -le [datetime]::ParseExact($VM.Tags["$($VM.Tags.Keys | Where-Object {$_.toLower() -ieq $AutoShutdownTimeTagName.toLower()})"],'HH:mm',$null) -and 
+                $VM.PowerState -eq "VM running"
             )
             {
-                $VmsToStop += $PSItem
+                [PSCustomObject]@{ Action = 'Stop'; VM = $VM }
             }
         }
+    }
+} -ThrottleLimit $ThrottleLimit)
+
+# Distribute results into appropriate arrays
+foreach ($Action in $VMActions) {
+    if ($Action.Action -eq 'Start') {
+        $VmsToStart += $Action.VM
+    } else {
+        $VmsToStop += $Action.VM
     }
 }
 
@@ -141,7 +166,9 @@ $Jobs = @()
 ForEach ($VM in ($VmsToStop | Sort-Object Id)) 
 {
     #Write-Output "Current UTC time: $((Get-Date).ToUniversalTime())"
-    Write-Output "Shutting down: $($VM.Name) with given shutdown time $($VM.Tags["$($VM.Tags.Keys | Where {$_.toLower() -ieq "autoshutdowntime"})"]) in current state $($VM.PowerState)..."
+    $ShutdownTimeTag = $VM.Tags.Keys | Where-Object {$_.toLower() -ieq "autoshutdowntime"}
+    $ShutdownTime = if ($ShutdownTimeTag) { $VM.Tags[$ShutdownTimeTag] } else { "N/A" }
+    Write-Output "Shutting down: $($VM.Name) with given shutdown time $ShutdownTime in current state $($VM.PowerState)..."
     
     $SubId = $VM.Id.Split("/")[2] # This is the Subscription Id as part of
     $Context = Get-AzContext
@@ -155,7 +182,9 @@ ForEach ($VM in ($VmsToStop | Sort-Object Id))
 ForEach ($VM in ($VmsToStart | Sort-Object Id) ) 
 {
     #Write-Output "Current UTC time: $((Get-Date).ToUniversalTime())"
-    Write-Output "Starting : $($VM.Name) with given startup time $($VM.Tags["$($VM.Tags.Keys | Where {$_.toLower() -ieq "autostartuptime"})"]) in current state $($VM.PowerState)..."
+    $StartupTimeTag = $VM.Tags.Keys | Where-Object {$_.toLower() -ieq "autostartuptime"}
+    $StartupTime = if ($StartupTimeTag) { $VM.Tags[$StartupTimeTag] } else { "N/A" }
+    Write-Output "Starting : $($VM.Name) with given startup time $StartupTime in current state $($VM.PowerState)..."
 
     $SubId = $VM.Id.Split("/")[2] # This is the Subscription Id as part of
     $Context = Get-AzContext
@@ -184,4 +213,17 @@ else {
     "No VMs require action at this time."
 }
 
+# Calculate and display statistics
+$ScriptEndTime = Get-Date
+$ScriptRuntime = $ScriptEndTime - $ScriptStartTime
+$VMsTouched = $VmsToStart.Count + $VmsToStop.Count
+
+"" # Empty line for readability
+"=== SCRIPT EXECUTION SUMMARY ==="
+"Subscriptions processed: $($AllSubscriptions.Count)"
+"Total VMs found: $($AllVms.Count)"
+"VMs touched (Start/Stop): $VMsTouched"
+"  - VMs started: $($VmsToStart.Count)"
+"  - VMs stopped: $($VmsToStop.Count)"
+"Total script runtime: $($ScriptRuntime.Hours):$($ScriptRuntime.Minutes):$($ScriptRuntime.Seconds)"
 "Endtime: $(([System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,""W. Europe Standard Time"")).tostring(""HH:mm:ss""))"
