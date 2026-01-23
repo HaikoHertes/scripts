@@ -13,6 +13,9 @@
         Maximum number of VMs to process in parallel (default: 8)
     .PARAMETER MaxRetries
         Maximum number of retry attempts for failed start operations (default: 3)
+    .PARAMETER StartupGracePeriod
+        Grace period in minutes for startup - VMs will be started if their startup time is within +/- N minutes from now (default: 59)
+        This allows for schedule delays and ensures startups within the grace period window
     .PARAMETER AutoStartupTagName
         Name of the tag that enables VM startup (default: autostartup)
     .PARAMETER AutoStartupTimeTagName
@@ -36,6 +39,7 @@
 param(
     [int]$ThrottleLimit = 8,
     [int]$MaxRetries = 3,
+    [int]$StartupGracePeriod = 59,
     [string]$AutoStartupTagName = "autostartup",
     [string]$AutoStartupTimeTagName = "autostartuptime",
     [string]$AutoStartupDaysTagName = "autostartupdays",
@@ -122,6 +126,7 @@ $VMActions = @($AllVms | ForEach-Object -Parallel {
     $AutoShutdownTagName = $Using:AutoShutdownTagName
     $AutoShutdownTimeTagName = $Using:AutoShutdownTimeTagName
     $AutoShutdownDaysTagName = $Using:AutoShutdownDaysTagName
+    $StartupGracePeriod = $Using:StartupGracePeriod
 
     # Does the VM has Startup Tags?
     if(($VM.Tags.Keys -icontains $AutoStartupTagName) -and ($VM.Tags.Keys -icontains $AutoStartupTimeTagName))
@@ -135,12 +140,14 @@ $VMActions = @($AllVms | ForEach-Object -Parallel {
                 $DayPattern = $VM.Tags[$DayPattern]
             }
             
-            # Do we need to startup the VM now / was the startup time set between now and one hour ago?
+            # Do we need to startup the VM now / is the startup time within the grace period (lookback + lookahead)?
             $CurrentDateTimeGER = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,"W. Europe Standard Time")
+            $StartupTimeValue = [datetime]::ParseExact($VM.Tags["$($VM.Tags.Keys | Where-Object {$_.toLower() -ieq $AutoStartupTimeTagName.toLower()})"],'HH:mm',$null)
+            
             If(
                 (Test-DayOfWeekMatch -DayPattern $DayPattern) -and
-                $CurrentDateTimeGER -ge [datetime]::ParseExact($VM.Tags["$($VM.Tags.Keys | Where-Object {$_.toLower() -ieq $AutoStartupTimeTagName.toLower()})"],'HH:mm',$null) -and 
-                $CurrentDateTimeGER.AddHours(-1) -le [datetime]::ParseExact($VM.Tags["$($VM.Tags.Keys | Where-Object {$_.toLower() -ieq $AutoStartupTimeTagName.toLower()})"],'HH:mm',$null) -and 
+                $CurrentDateTimeGER.AddMinutes(-1 * $StartupGracePeriod) -le $StartupTimeValue -and 
+                $StartupTimeValue -le $CurrentDateTimeGER.AddMinutes($StartupGracePeriod) -and 
                 $VM.PowerState -ne "VM running"
                )
             {
