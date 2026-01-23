@@ -68,25 +68,6 @@ $ScriptStartTime = Get-Date
 $CurrentDateTimeInGivenTZ = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,$TimeZone)
 "Starttime: $(([System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,$TimeZone)).tostring(""HH:mm:ss""))"
 
-# Function to check if current day matches the day pattern
-# Pattern format: "xoooooo" = Mon-Sun, x=execute, o=skip
-function Test-DayOfWeekMatch {
-    param(
-        [string]$DayPattern,
-        [string]$TimeZoneId
-    )
-    
-    if ([string]::IsNullOrWhiteSpace($DayPattern) -or $DayPattern.Length -ne 7) {
-        return $true  # If pattern is invalid or not set, allow execution any day
-    }
-    
-    $CurrentDay = [int][System.DayOfWeek]::([System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,$TimeZoneId).DayOfWeek)
-    # Convert .NET DayOfWeek (Sunday=0) to our format (Monday=0), so we shift by 1
-    $CurrentDay = ($CurrentDay + 6) % 7
-    
-    return $DayPattern[$CurrentDay] -eq 'x'
-}
-
 # Login to Azure using system-assigned managed identity
 try
 {
