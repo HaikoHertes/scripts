@@ -88,10 +88,16 @@ catch
 $AllSubscriptions = Get-AzSubscription
 "Getting VMs from $($AllSubscriptions.Count) subscription(s)..."
 
+# Cache current subscription to avoid repeated Get-AzContext calls in loops
+$CurrentSubId = (Get-AzContext).Subscription.Id
+
 # Fetch VMs from all subscriptions (sequentially since parallel runspaces lose authentication context)
 [array]$AllVms = @()
 foreach ($Sub in $AllSubscriptions) {
-    $Sub | Set-AzContext -WarningAction SilentlyContinue | Out-Null
+    If($CurrentSubId -ne $Sub.Id) {
+        $Sub | Set-AzContext -WarningAction SilentlyContinue | Out-Null
+        $CurrentSubId = $Sub.Id
+    }
     $AllVms += Get-AzVm -Status
 }
 
@@ -206,16 +212,15 @@ $Jobs = @()
 # Iterate through VmsToStop and shut them down
 ForEach ($VM in ($VmsToStop | Sort-Object Id)) 
 {
-    #Write-Output "Current UTC time: $((Get-Date).ToUniversalTime())"
     $ShutdownTimeTag = $VM.Tags.Keys | Where-Object {$_.toLower() -ieq "autoshutdowntime"}
     $ShutdownTime = if ($ShutdownTimeTag) { $VM.Tags[$ShutdownTimeTag] } else { "N/A" }
     Write-Output "Shutting down: $($VM.Name) with given shutdown time $ShutdownTime in current state $($VM.PowerState)..."
     
     $SubId = $VM.Id.Split("/")[2] # This is the Subscription Id as part of the VMs resource ID
-    $Context = Get-AzContext
-    If($Context.Subscription.Id -ne $SubId)
+    If($CurrentSubId -ne $SubId)
     {
         Set-AzContext -SubscriptionId $SubId -WarningAction SilentlyContinue | Out-Null
+        $CurrentSubId = $SubId
     }
     $Jobs += Stop-AzVm -Name $VM.Name -ResourceGroupName $VM.ResourceGroupName -Force -AsJob
 }
@@ -227,10 +232,10 @@ ForEach ($VM in ($VmsToStart | Sort-Object Id) )
     Write-Output "Starting : $($VM.Name) with given startup time $StartupTime in current state $($VM.PowerState)..."
 
     $SubId = $VM.Id.Split("/")[2] # This is the Subscription Id as part of the VMs resource ID
-    $Context = Get-AzContext
-    If($Context.Subscription.Id -ne $SubId)
+    If($CurrentSubId -ne $SubId)
     {
         Set-AzContext -SubscriptionId $SubId -WarningAction SilentlyContinue | Out-Null
+        $CurrentSubId = $SubId
     }
     
     # Retry logic for start operations (up to MaxRetries attempts with 60 second wait between retries)
@@ -276,6 +281,9 @@ if ($Jobs.Count -gt 0) {
                 }
             }
         }
+        
+        # Clean up jobs to free resources
+        $Jobs | Remove-Job -Force
     }
 }
 else {
