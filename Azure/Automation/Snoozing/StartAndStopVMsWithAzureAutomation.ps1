@@ -23,7 +23,8 @@ param(
     .NOTES
         AUTHOR: Haiko Hertes, SoftwareONE
                 Microsoft Azure MVP & Azure Architect
-        LASTEDIT: 2026/01/23 - Added parallel processing and day-of-week tags
+        LASTEDIT: 2026/01/23 - Added parallel processing, day-of-week tags, Tags as Parameters
+                Script was tested using PowerShell 7.4 within Azure Automation
 #>
 
 # For comparison, we need the current UTC time in Germany
@@ -54,7 +55,7 @@ function Test-DayOfWeekMatch {
 try
 {
     "Logging into Azure using system assigned managed identity..."
-    Connect-AzAccount -Identity
+    Connect-AzAccount -Identity -WarningAction SilentlyContinue -InformationAction SilentlyContinue | Out-Null
 }
 catch
 {
@@ -225,5 +226,5 @@ $VMsTouched = $VmsToStart.Count + $VmsToStop.Count
 "VMs touched (Start/Stop): $VMsTouched"
 "  - VMs started: $($VmsToStart.Count)"
 "  - VMs stopped: $($VmsToStop.Count)"
-"Total script runtime: $($ScriptRuntime.Hours):$($ScriptRuntime.Minutes):$($ScriptRuntime.Seconds)"
+"Total script runtime: $('{0:hh\:mm\:ss}' -f $ScriptRuntime)"
 "Endtime: $(([System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,""W. Europe Standard Time"")).tostring(""HH:mm:ss""))"
