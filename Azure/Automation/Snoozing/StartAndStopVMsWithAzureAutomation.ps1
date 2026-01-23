@@ -140,13 +140,13 @@ $VMActions = @($AllVms | ForEach-Object -Parallel {
                 $DayPattern = $VM.Tags[$DayPattern]
             }
             
-            # Do we need to startup the VM now / is the startup time within the grace period (lookback + lookahead)?
+            # Do we need to startup the VM now / is the startup time within 1 hour back and StartupGracePeriod forward?
             $CurrentDateTimeGER = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,"W. Europe Standard Time")
             $StartupTimeValue = [datetime]::ParseExact($VM.Tags["$($VM.Tags.Keys | Where-Object {$_.toLower() -ieq $AutoStartupTimeTagName.toLower()})"],'HH:mm',$null)
             
             If(
                 (Test-DayOfWeekMatch -DayPattern $DayPattern) -and
-                $CurrentDateTimeGER.AddMinutes(-1 * $StartupGracePeriod) -le $StartupTimeValue -and 
+                $CurrentDateTimeGER.AddHours(-1) -le $StartupTimeValue -and 
                 $StartupTimeValue -le $CurrentDateTimeGER.AddMinutes($StartupGracePeriod) -and 
                 $VM.PowerState -ne "VM running"
                )
