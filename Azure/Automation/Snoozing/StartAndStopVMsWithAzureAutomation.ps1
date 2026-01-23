@@ -31,6 +31,9 @@
     .PARAMETER TimeZone
         Time zone ID to use for time comparisons (default: "W. Europe Standard Time")
         Use [System.TimeZoneInfo]::GetSystemTimeZones() to list available time zones
+    .PARAMETER FireAndForget
+        If $true, the script will submit VM start/stop operations and exit immediately without waiting for completion (default: $false)
+        Use this in Azure Automation to minimize script runtime and reduce costs. Operations will complete in the background.
     .NOTES
         AUTHOR: Haiko Hertes, SoftwareONE
                 Microsoft Azure MVP & Azure Architect
@@ -50,7 +53,8 @@ param(
     [string]$AutoShutdownTagName = "autoshutdown",
     [string]$AutoShutdownTimeTagName = "autoshutdowntime",
     [string]$AutoShutdownDaysTagName = "autoshutdowndays",
-    [string]$TimeZone = "W. Europe Standard Time"
+    [string]$TimeZone = "W. Europe Standard Time",
+    [bool]$FireAndForget = $false
 )
 
 
@@ -250,17 +254,27 @@ ForEach ($VM in ($VmsToStart | Sort-Object Id) )
     }
 }
 
-# Only wait if there are jobs to wait for
+# Only wait if there are jobs to wait for (unless FireAndForget mode is enabled)
 if ($Jobs.Count -gt 0) {
-    "Waiting for all $($Jobs.Count) VM operations to complete (max 120 seconds)..."
-    $Jobs | Wait-Job -Timeout 120 | Out-Null
-    "VM operations completed!"
-    
-    # Display job results
-    foreach ($Job in $Jobs) {
-        $Result = $Job | Receive-Job -ErrorAction SilentlyContinue
-        if ($Result) {
-            Write-Output "Job $($Job.Name) result: $($Result -join '; ')"
+    if ($FireAndForget) {
+        "FireAndForget mode enabled: $($Jobs.Count) VM operation(s) submitted. Script exiting without waiting for completion."
+    }
+    else {
+        "Waiting for all $($Jobs.Count) VM operations to complete (max 120 seconds)..."
+        $Jobs | Wait-Job -Timeout 120 | Out-Null
+        "VM operations completed!"
+        
+        # Display job results - show status and any errors
+        foreach ($Job in $Jobs) {
+            $JobStatus = if ($Job.State -eq 'Completed') { '✓ Success' } else { '✗ ' + $Job.State }
+            Write-Output "  $($Job.Name): $JobStatus"
+            
+            # Capture any errors from the job
+            if ($Job.Error) {
+                foreach ($ErrorRecord in $Job.Error) {
+                    Write-Output "    Error: $($ErrorRecord.Exception.Message)"
+                }
+            }
         }
     }
 }
