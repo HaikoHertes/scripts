@@ -9,16 +9,33 @@
         
         Attention: This need the Azure Automation modules being updated - take a look on this video: https://www.youtube.com/watch?v=D61XWOeN_w8&t=11s (08:30)
         The Script will only touch a VM if the given time to start / stop is less than an hour ago! (Otherwise we would run into strange behavior in certain situations)
+    .PARAMETER ThrottleLimit
+        Maximum number of VMs to process in parallel (default: 8)
+    .PARAMETER MaxRetries
+        Maximum number of retry attempts for failed start operations (default: 3)
+    .PARAMETER AutoStartupTagName
+        Name of the tag that enables VM startup (default: autostartup)
+    .PARAMETER AutoStartupTimeTagName
+        Name of the tag containing the startup time in HH:mm format (default: autostartuptime)
+    .PARAMETER AutoStartupDaysTagName
+        Name of the tag controlling which days startup executes in format "xoooooo" Mon-Sun (default: autostartupdays)
+    .PARAMETER AutoShutdownTagName
+        Name of the tag that enables VM shutdown (default: autoshutdown)
+    .PARAMETER AutoShutdownTimeTagName
+        Name of the tag containing the shutdown time in HH:mm format (default: autoshutdowntime)
+    .PARAMETER AutoShutdownDaysTagName
+        Name of the tag controlling which days shutdown executes in format "xoooooo" Mon-Sun (default: autoshutdowndays)
     .NOTES
         AUTHOR: Haiko Hertes, SoftwareONE
                 Microsoft Azure MVP & Azure Architect
-        LASTEDIT: 2026/01/23 - Added parallel processing, day-of-week tags, Tags as Parameters
+        LASTEDIT: 2026/01/23 - Added parallel processing, day-of-week tags, Tags as Parameters, MaxRetries parameter
                 Script was tested using PowerShell 7.4 within Azure Automation
 #>
 
 [CmdletBinding()]
 param(
     [int]$ThrottleLimit = 8,
+    [int]$MaxRetries = 3,
     [string]$AutoStartupTagName = "autostartup",
     [string]$AutoStartupTimeTagName = "autostartuptime",
     [string]$AutoStartupDaysTagName = "autostartupdays",
@@ -195,7 +212,6 @@ ForEach ($VM in ($VmsToStop | Sort-Object Id))
 
 ForEach ($VM in ($VmsToStart | Sort-Object Id) ) 
 {
-    #Write-Output "Current UTC time: $((Get-Date).ToUniversalTime())"
     $StartupTimeTag = $VM.Tags.Keys | Where-Object {$_.toLower() -ieq "autostartuptime"}
     $StartupTime = if ($StartupTimeTag) { $VM.Tags[$StartupTimeTag] } else { "N/A" }
     Write-Output "Starting : $($VM.Name) with given startup time $StartupTime in current state $($VM.PowerState)..."
@@ -206,7 +222,26 @@ ForEach ($VM in ($VmsToStart | Sort-Object Id) )
     {
         Set-AzContext -SubscriptionId $SubId -WarningAction SilentlyContinue | Out-Null
     }
-    $Jobs += Start-AzVm -Name $VM.Name -ResourceGroupName $VM.ResourceGroupName -AsJob
+    
+    # Retry logic for start operations (up to MaxRetries attempts with 60 second wait between retries)
+    $RetryCount = 0
+    $StartJobCreated = $false
+    
+    while ($RetryCount -lt $MaxRetries -and -not $StartJobCreated) {
+        try {
+            $Jobs += Start-AzVm -Name $VM.Name -ResourceGroupName $VM.ResourceGroupName -AsJob -ErrorAction Stop
+            $StartJobCreated = $true
+        }
+        catch {
+            $RetryCount++
+            if ($RetryCount -lt $MaxRetries) {
+                Write-Output "  Warning: Failed to start $($VM.Name). Retrying in 60 seconds (Attempt $RetryCount of $MaxRetries)..."
+                Start-Sleep -Seconds 60
+            } else {
+                Write-Output "  Error: Failed to start $($VM.Name) after $MaxRetries attempts. Skipping."
+            }
+        }
+    }
 }
 
 # Only wait if there are jobs to wait for
