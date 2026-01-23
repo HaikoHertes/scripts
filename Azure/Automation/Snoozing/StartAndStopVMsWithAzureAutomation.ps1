@@ -1,14 +1,3 @@
-[CmdletBinding()]
-param(
-    [int]$ThrottleLimit = 8,
-    [string]$AutoStartupTagName = "autostartup",
-    [string]$AutoStartupTimeTagName = "autostartuptime",
-    [string]$AutoStartupDaysTagName = "autostartupdays",
-    [string]$AutoShutdownTagName = "autoshutdown",
-    [string]$AutoShutdownTimeTagName = "autoshutdowntime",
-    [string]$AutoShutdownDaysTagName = "autoshutdowndays"
-)
-
 <#
     .DESCRIPTION
         This runbooks shuts down all Azure VMs in all Ressource Groups that have the Tag "AUTOSHUTDOWN" set to "true" at the time given in "AUTOSHUTDOWNTIME" in the format "HH:mm" and
@@ -26,6 +15,19 @@ param(
         LASTEDIT: 2026/01/23 - Added parallel processing, day-of-week tags, Tags as Parameters
                 Script was tested using PowerShell 7.4 within Azure Automation
 #>
+
+[CmdletBinding()]
+param(
+    [int]$ThrottleLimit = 8,
+    [string]$AutoStartupTagName = "autostartup",
+    [string]$AutoStartupTimeTagName = "autostartuptime",
+    [string]$AutoStartupDaysTagName = "autostartupdays",
+    [string]$AutoShutdownTagName = "autoshutdown",
+    [string]$AutoShutdownTimeTagName = "autoshutdowntime",
+    [string]$AutoShutdownDaysTagName = "autoshutdowndays"
+)
+
+
 
 # For comparison, we need the current UTC time in Germany
 #$CurrentDateTimeUTC = (Get-Date).ToUniversalTime()
@@ -64,14 +66,14 @@ catch
 }
 
 $AllSubscriptions = Get-AzSubscription
-"Getting VMs from $($AllSubscriptions.Count) subscription(s) in parallel with ThrottleLimit=$ThrottleLimit..."
+"Getting VMs from $($AllSubscriptions.Count) subscription(s)..."
 
-# Fetch VMs from all subscriptions in parallel
-[array]$AllVms = @($AllSubscriptions | ForEach-Object -Parallel {
-    $Sub = $_
+# Fetch VMs from all subscriptions (sequentially since parallel runspaces lose authentication context)
+[array]$AllVms = @()
+foreach ($Sub in $AllSubscriptions) {
     $Sub | Set-AzContext -WarningAction SilentlyContinue | Out-Null
-    Get-AzVm -Status
-} -ThrottleLimit $ThrottleLimit)
+    $AllVms += Get-AzVm -Status
+}
 
 "Found $($AllVms.Count) VMs..."
 
@@ -84,6 +86,17 @@ $AllSubscriptions = Get-AzSubscription
 "Processing $($AllVms.Count) VMs in parallel with ThrottleLimit=$ThrottleLimit..."
 
 $VMActions = @($AllVms | ForEach-Object -Parallel {
+    # Define the function inside the parallel block so it's available in this runspace
+    function Test-DayOfWeekMatch {
+        param([string]$DayPattern)
+        if ([string]::IsNullOrWhiteSpace($DayPattern) -or $DayPattern.Length -ne 7) {
+            return $true
+        }
+        $CurrentDay = [int][System.DayOfWeek]::([System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,"W. Europe Standard Time").DayOfWeek)
+        $CurrentDay = ($CurrentDay + 6) % 7
+        return $DayPattern[$CurrentDay] -eq 'x'
+    }
+    
     $VM = $_
     $VmToStart = $false
     $AutoStartupTagName = $Using:AutoStartupTagName
@@ -171,7 +184,7 @@ ForEach ($VM in ($VmsToStop | Sort-Object Id))
     $ShutdownTime = if ($ShutdownTimeTag) { $VM.Tags[$ShutdownTimeTag] } else { "N/A" }
     Write-Output "Shutting down: $($VM.Name) with given shutdown time $ShutdownTime in current state $($VM.PowerState)..."
     
-    $SubId = $VM.Id.Split("/")[2] # This is the Subscription Id as part of
+    $SubId = $VM.Id.Split("/")[2] # This is the Subscription Id as part of the VMs resource ID
     $Context = Get-AzContext
     If($Context.Subscription.Id -ne $SubId)
     {
@@ -187,7 +200,7 @@ ForEach ($VM in ($VmsToStart | Sort-Object Id) )
     $StartupTime = if ($StartupTimeTag) { $VM.Tags[$StartupTimeTag] } else { "N/A" }
     Write-Output "Starting : $($VM.Name) with given startup time $StartupTime in current state $($VM.PowerState)..."
 
-    $SubId = $VM.Id.Split("/")[2] # This is the Subscription Id as part of
+    $SubId = $VM.Id.Split("/")[2] # This is the Subscription Id as part of the VMs resource ID
     $Context = Get-AzContext
     If($Context.Subscription.Id -ne $SubId)
     {
