@@ -28,6 +28,9 @@
         Name of the tag containing the shutdown time in HH:mm format (default: autoshutdowntime)
     .PARAMETER AutoShutdownDaysTagName
         Name of the tag controlling which days shutdown executes in format "xoooooo" Mon-Sun (default: autoshutdowndays)
+    .PARAMETER TimeZone
+        Time zone ID to use for time comparisons (default: "W. Europe Standard Time")
+        Use [System.TimeZoneInfo]::GetSystemTimeZones() to list available time zones
     .NOTES
         AUTHOR: Haiko Hertes, SoftwareONE
                 Microsoft Azure MVP & Azure Architect
@@ -45,29 +48,39 @@ param(
     [string]$AutoStartupDaysTagName = "autostartupdays",
     [string]$AutoShutdownTagName = "autoshutdown",
     [string]$AutoShutdownTimeTagName = "autoshutdowntime",
-    [string]$AutoShutdownDaysTagName = "autoshutdowndays"
+    [string]$AutoShutdownDaysTagName = "autoshutdowndays",
+    [string]$TimeZone = "W. Europe Standard Time"
 )
 
 
+# Verify that the specified timezone exists
+try {
+    [System.TimeZoneInfo]::FindSystemTimeZoneById($TimeZone) | Out-Null
+}
+catch {
+    Write-Error "The specified TimeZone '$TimeZone' does not exist. Use [System.TimeZoneInfo]::GetSystemTimeZones() to list available time zones."
+    throw $_
+}
 
-# For comparison, we need the current UTC time in Germany
+# For comparison, we need the current time in the specified timezone
 #$CurrentDateTimeUTC = (Get-Date).ToUniversalTime()
 $ScriptStartTime = Get-Date
-$CurrentDateTimeGER = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,"W. Europe Standard Time")
-"Starttime: $(([System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,""W. Europe Standard Time"")).tostring(""HH:mm:ss""))"
+$CurrentDateTimeInGivenTZ = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,$TimeZone)
+"Starttime: $(([System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,$TimeZone)).tostring(""HH:mm:ss""))"
 
 # Function to check if current day matches the day pattern
 # Pattern format: "xoooooo" = Mon-Sun, x=execute, o=skip
 function Test-DayOfWeekMatch {
     param(
-        [string]$DayPattern
+        [string]$DayPattern,
+        [string]$TimeZoneId
     )
     
     if ([string]::IsNullOrWhiteSpace($DayPattern) -or $DayPattern.Length -ne 7) {
         return $true  # If pattern is invalid or not set, allow execution any day
     }
     
-    $CurrentDay = [int][System.DayOfWeek]::([System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,"W. Europe Standard Time").DayOfWeek)
+    $CurrentDay = [int][System.DayOfWeek]::([System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,$TimeZoneId).DayOfWeek)
     # Convert .NET DayOfWeek (Sunday=0) to our format (Monday=0), so we shift by 1
     $CurrentDay = ($CurrentDay + 6) % 7
     
@@ -109,11 +122,14 @@ foreach ($Sub in $AllSubscriptions) {
 $VMActions = @($AllVms | ForEach-Object -Parallel {
     # Define the function inside the parallel block so it's available in this runspace
     function Test-DayOfWeekMatch {
-        param([string]$DayPattern)
+        param(
+            [string]$DayPattern,
+            [string]$TimeZoneId
+        )
         if ([string]::IsNullOrWhiteSpace($DayPattern) -or $DayPattern.Length -ne 7) {
             return $true
         }
-        $CurrentDay = [int][System.DayOfWeek]::([System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,"W. Europe Standard Time").DayOfWeek)
+        $CurrentDay = [int][System.DayOfWeek]::([System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,$TimeZoneId).DayOfWeek)
         $CurrentDay = ($CurrentDay + 6) % 7
         return $DayPattern[$CurrentDay] -eq 'x'
     }
@@ -127,6 +143,7 @@ $VMActions = @($AllVms | ForEach-Object -Parallel {
     $AutoShutdownTimeTagName = $Using:AutoShutdownTimeTagName
     $AutoShutdownDaysTagName = $Using:AutoShutdownDaysTagName
     $StartupGracePeriod = $Using:StartupGracePeriod
+    $TimeZoneId = $Using:TimeZone
 
     # Does the VM has Startup Tags?
     if(($VM.Tags.Keys -icontains $AutoStartupTagName) -and ($VM.Tags.Keys -icontains $AutoStartupTimeTagName))
@@ -141,13 +158,13 @@ $VMActions = @($AllVms | ForEach-Object -Parallel {
             }
             
             # Do we need to startup the VM now / is the startup time within 1 hour back and StartupGracePeriod forward?
-            $CurrentDateTimeGER = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,"W. Europe Standard Time")
+            $CurrentDateTimeInGivenTZ = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,$TimeZoneId)
             $StartupTimeValue = [datetime]::ParseExact($VM.Tags["$($VM.Tags.Keys | Where-Object {$_.toLower() -ieq $AutoStartupTimeTagName.toLower()})"],'HH:mm',$null)
             
             If(
-                (Test-DayOfWeekMatch -DayPattern $DayPattern) -and
-                $CurrentDateTimeGER.AddHours(-1) -le $StartupTimeValue -and 
-                $StartupTimeValue -le $CurrentDateTimeGER.AddMinutes($StartupGracePeriod) -and 
+                (Test-DayOfWeekMatch -DayPattern $DayPattern -TimeZoneId $TimeZoneId) -and
+                $CurrentDateTimeInGivenTZ.AddHours(-1) -le $StartupTimeValue -and 
+                $StartupTimeValue -le $CurrentDateTimeInGivenTZ.AddMinutes($StartupGracePeriod) -and 
                 $VM.PowerState -ne "VM running"
                )
             {
@@ -169,11 +186,11 @@ $VMActions = @($AllVms | ForEach-Object -Parallel {
             }
             
             # Do we need to shutdown the VM now / was the shutdown time set between now and one hour ago?
-            $CurrentDateTimeGER = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,"W. Europe Standard Time")
+            $CurrentDateTimeInGivenTZ = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,$TimeZoneId)
             If(
-                (Test-DayOfWeekMatch -DayPattern $DayPattern) -and
-                $CurrentDateTimeGER -ge [datetime]::ParseExact($VM.Tags["$($VM.Tags.Keys | Where-Object {$_.toLower() -ieq $AutoShutdownTimeTagName.toLower()})"],'HH:mm',$null) -and 
-                $CurrentDateTimeGER.AddHours(-1) -le [datetime]::ParseExact($VM.Tags["$($VM.Tags.Keys | Where-Object {$_.toLower() -ieq $AutoShutdownTimeTagName.toLower()})"],'HH:mm',$null) -and 
+                (Test-DayOfWeekMatch -DayPattern $DayPattern -TimeZoneId $TimeZoneId) -and
+                $CurrentDateTimeInGivenTZ -ge [datetime]::ParseExact($VM.Tags["$($VM.Tags.Keys | Where-Object {$_.toLower() -ieq $AutoShutdownTimeTagName.toLower()})"],'HH:mm',$null) -and 
+                $CurrentDateTimeInGivenTZ.AddHours(-1) -le [datetime]::ParseExact($VM.Tags["$($VM.Tags.Keys | Where-Object {$_.toLower() -ieq $AutoShutdownTimeTagName.toLower()})"],'HH:mm',$null) -and 
                 $VM.PowerState -eq "VM running"
             )
             {
@@ -282,4 +299,4 @@ $VMsTouched = $VmsToStart.Count + $VmsToStop.Count
 "  - VMs started: $($VmsToStart.Count)"
 "  - VMs stopped: $($VmsToStop.Count)"
 "Total script runtime: $('{0:hh\:mm\:ss}' -f $ScriptRuntime)"
-"Endtime: $(([System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,""W. Europe Standard Time"")).tostring(""HH:mm:ss""))"
+"Endtime: $(([System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,$TimeZone)).tostring(""HH:mm:ss""))"
