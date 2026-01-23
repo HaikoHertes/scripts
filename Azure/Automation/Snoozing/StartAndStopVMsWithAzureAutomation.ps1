@@ -34,7 +34,8 @@
     .NOTES
         AUTHOR: Haiko Hertes, SoftwareONE
                 Microsoft Azure MVP & Azure Architect
-        LASTEDIT: 2026/01/23 - Added parallel processing, day-of-week tags, Tags as Parameters, MaxRetries parameter
+        LASTEDIT: 2026/01/23
+                Added parallel processing, day-of-week tags, Tags as Parameters, MaxRetries parameter, TZ as Parameter, Grace period for startup
                 Script was tested using PowerShell 7.4 within Azure Automation
 #>
 
