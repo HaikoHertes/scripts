@@ -1,2 +1,7 @@
 Azure/CostOptimization/EnableDiagnosticSettingsWacker.ps1
 *.zip
+Azure/Automation/Snoozing/old
+Azure/AzureMigrate/ReplicationReport_*.csv
+Azure/AzureMigrate/*.txt
+Azure/AzureMigrate/SetStaticIPResults_*.csv
+Azure/AzureMigrate/StaticIPConfigurationReport_*.csv
