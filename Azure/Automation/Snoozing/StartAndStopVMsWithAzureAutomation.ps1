@@ -34,6 +34,9 @@
     .PARAMETER FireAndForget
         If $true, the script will submit VM start/stop operations and exit immediately without waiting for completion (default: $false)
         Use this in Azure Automation to minimize script runtime and reduce costs. Operations will complete in the background.
+    .PARAMETER DebugMode
+        If $true, the script will output detailed debug information for troubleshooting (default: $false)
+        Use this to diagnose tag matching, time comparisons, and VM evaluation logic.
     .NOTES
         AUTHOR: Haiko Hertes, SoftwareONE
                 Microsoft Azure MVP & Azure Architect
@@ -54,7 +57,8 @@ param(
     [string]$AutoShutdownTimeTagName = "autoshutdowntime",
     [string]$AutoShutdownDaysTagName = "autoshutdowndays",
     [string]$TimeZone = "W. Europe Standard Time",
-    [bool]$FireAndForget = $false
+    [bool]$FireAndForget = $false,
+    [bool]$DebugMode = $false
 )
 
 
@@ -77,7 +81,13 @@ $CurrentDateTimeInGivenTZ = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId
 try
 {
     "Logging into Azure using system assigned managed identity..."
+    # Suppress verbose module loading output
+    $VerbosePreferenceBackup = $VerbosePreference
+    $VerbosePreference = 'SilentlyContinue'
+    
     Connect-AzAccount -Identity -WarningAction SilentlyContinue -InformationAction SilentlyContinue | Out-Null
+    
+    $VerbosePreference = $VerbosePreferenceBackup
 }
 catch
 {
@@ -85,8 +95,13 @@ catch
     throw $_.Exception
 }
 
+# Suppress verbose preference for subscription and VM operations to avoid module loading noise
+$VerbosePreferenceBackup = $VerbosePreference
+$VerbosePreference = 'SilentlyContinue'
+
 $AllSubscriptions = Get-AzSubscription
 "Getting VMs from $($AllSubscriptions.Count) subscription(s)..."
+if ($DebugMode) { "  [DEBUG] Subscriptions: $($AllSubscriptions.Name -join ', ')" }
 
 # Cache current subscription to avoid repeated Get-AzContext calls in loops
 $CurrentSubId = (Get-AzContext).Subscription.Id
@@ -95,11 +110,17 @@ $CurrentSubId = (Get-AzContext).Subscription.Id
 [array]$AllVms = @()
 foreach ($Sub in $AllSubscriptions) {
     If($CurrentSubId -ne $Sub.Id) {
+        if ($DebugMode) { "[DEBUG] Switching context to subscription: $($Sub.Name) ($($Sub.Id))" }
         $Sub | Set-AzContext -WarningAction SilentlyContinue | Out-Null
         $CurrentSubId = $Sub.Id
     }
-    $AllVms += Get-AzVm -Status
+    $SubVms = @(Get-AzVm -Status)
+    if ($DebugMode) { "[DEBUG] Found $($SubVms.Count) VMs in subscription $($Sub.Name)" }
+    $AllVms += $SubVms
 }
+
+# Restore verbose preference after data collection
+$VerbosePreference = $VerbosePreferenceBackup
 
 "Found $($AllVms.Count) VMs..."
 
@@ -136,10 +157,14 @@ $VMActions = @($AllVms | ForEach-Object -Parallel {
     $AutoShutdownDaysTagName = $Using:AutoShutdownDaysTagName
     $StartupGracePeriod = $Using:StartupGracePeriod
     $TimeZoneId = $Using:TimeZone
+    $DebugMode = $Using:DebugMode
 
     # Does the VM has Startup Tags?
     if(($VM.Tags.Keys -icontains $AutoStartupTagName) -and ($VM.Tags.Keys -icontains $AutoStartupTimeTagName))
     {
+        $StartupTagValue = $VM.Tags["$($VM.Tags.Keys | Where-Object {$_.toLower() -ieq $AutoStartupTagName.toLower()}))"]
+        $StartupTimeRaw = $VM.Tags["$($VM.Tags.Keys | Where-Object {$_.toLower() -ieq $AutoStartupTimeTagName.toLower()})"]
+        if ($DebugMode) { "[DEBUG] $($VM.Name): Found startup tags - Enabled=$StartupTagValue, Time=$StartupTimeRaw" }
         # Is the Startup Tag set to true?
         If($VM.Tags["$($VM.Tags.Keys | Where-Object {$_.toLower() -ieq $AutoStartupTagName.toLower()})"] -eq "true")
         {
@@ -148,10 +173,15 @@ $VMActions = @($AllVms | ForEach-Object -Parallel {
             if ($DayPattern) {
                 $DayPattern = $VM.Tags[$DayPattern]
             }
+            if ($DebugMode) { "[DEBUG] $($VM.Name): Startup day pattern = '$DayPattern' (x=execute, o=skip)" }
             
             # Do we need to startup the VM now / is the startup time within 1 hour back and StartupGracePeriod forward?
             $CurrentDateTimeInGivenTZ = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,$TimeZoneId)
             $StartupTimeValue = [datetime]::ParseExact($VM.Tags["$($VM.Tags.Keys | Where-Object {$_.toLower() -ieq $AutoStartupTimeTagName.toLower()})"],'HH:mm',$null)
+            $DayMatches = Test-DayOfWeekMatch -DayPattern $DayPattern -TimeZoneId $TimeZoneId
+            $TimeInWindow = ($CurrentDateTimeInGivenTZ.AddHours(-1) -le $StartupTimeValue) -and ($StartupTimeValue -le $CurrentDateTimeInGivenTZ.AddMinutes($StartupGracePeriod))
+            $NotRunning = $VM.PowerState -ne "VM running"
+            if ($DebugMode) { "[DEBUG] $($VM.Name): Startup conditions - DayMatch=$DayMatches, TimeInWindow=$TimeInWindow (Time=$($StartupTimeValue.ToString('HH:mm')), Window=$($CurrentDateTimeInGivenTZ.AddHours(-1).ToString('HH:mm'))-$($CurrentDateTimeInGivenTZ.AddMinutes($StartupGracePeriod).ToString('HH:mm'))), NotRunning=$NotRunning" }
             
             If(
                 (Test-DayOfWeekMatch -DayPattern $DayPattern -TimeZoneId $TimeZoneId) -and
@@ -168,6 +198,9 @@ $VMActions = @($AllVms | ForEach-Object -Parallel {
     # Does the VM has Shutdown Tags and is not planned for startup (we consider startup to have higher priority)?
     if(($VM.Tags.Keys -icontains $AutoShutdownTagName) -and ($VM.Tags.Keys -icontains $AutoShutdownTimeTagName) -and (!$VmToStart))
     {
+        $ShutdownTagValue = $VM.Tags["$($VM.Tags.Keys | Where-Object {$_.toLower() -ieq $AutoShutdownTagName.toLower()})"]
+        $ShutdownTimeRaw = $VM.Tags["$($VM.Tags.Keys | Where-Object {$_.toLower() -ieq $AutoShutdownTimeTagName.toLower()})"]
+        if ($DebugMode) { "[DEBUG] $($VM.Name): Found shutdown tags - Enabled=$ShutdownTagValue, Time=$ShutdownTimeRaw" }
         # Is the Shutdown Tag set to true?
         If($VM.Tags["$($VM.Tags.Keys | Where-Object {$_.toLower() -ieq $AutoShutdownTagName.toLower()})"] -eq "true")
         {
@@ -176,9 +209,15 @@ $VMActions = @($AllVms | ForEach-Object -Parallel {
             if ($DayPattern) {
                 $DayPattern = $VM.Tags[$DayPattern]
             }
+            if ($DebugMode) { "[DEBUG] $($VM.Name): Shutdown day pattern = '$DayPattern' (x=execute, o=skip)" }
             
             # Do we need to shutdown the VM now / was the shutdown time set between now and one hour ago?
             $CurrentDateTimeInGivenTZ = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::Now,$TimeZoneId)
+            $ShutdownTimeValue = [datetime]::ParseExact($VM.Tags["$($VM.Tags.Keys | Where-Object {$_.toLower() -ieq $AutoShutdownTimeTagName.toLower()})"],'HH:mm',$null)
+            $DayMatches = Test-DayOfWeekMatch -DayPattern $DayPattern -TimeZoneId $TimeZoneId
+            $TimeInWindow = ($CurrentDateTimeInGivenTZ -ge $ShutdownTimeValue) -and ($CurrentDateTimeInGivenTZ.AddHours(-1) -le $ShutdownTimeValue)
+            $IsRunning = $VM.PowerState -eq "VM running"
+            if ($DebugMode) { "[DEBUG] $($VM.Name): Shutdown conditions - DayMatch=$DayMatches, TimeInWindow=$TimeInWindow (Time=$($ShutdownTimeValue.ToString('HH:mm')), Window=$($CurrentDateTimeInGivenTZ.AddHours(-1).ToString('HH:mm'))-$($CurrentDateTimeInGivenTZ.ToString('HH:mm'))), IsRunning=$IsRunning" }
             If(
                 (Test-DayOfWeekMatch -DayPattern $DayPattern -TimeZoneId $TimeZoneId) -and
                 $CurrentDateTimeInGivenTZ -ge [datetime]::ParseExact($VM.Tags["$($VM.Tags.Keys | Where-Object {$_.toLower() -ieq $AutoShutdownTimeTagName.toLower()})"],'HH:mm',$null) -and 
@@ -201,10 +240,14 @@ foreach ($Action in $VMActions) {
     }
 }
 
+Write-Output "#######################################"
 Write-Output "These VMs will get started:"
 Write-Output "$($VmsToStart.Name)"
+Write-Output "#######################################"
 Write-Output "These VMs will get stopped:"
 Write-Output "$($VmsToStop.Name)"
+Write-Output "#######################################"
+if ($DebugMode) { "[DEBUG] VMs to start: $($VmsToStart.Count), VMs to stop: $($VmsToStop.Count)" }
 
 $Jobs = @()
 
@@ -215,10 +258,12 @@ ForEach ($VM in ($VmsToStop | Sort-Object Id))
     $ShutdownTimeTag = $VM.Tags.Keys | Where-Object {$_.toLower() -ieq "autoshutdowntime"}
     $ShutdownTime = if ($ShutdownTimeTag) { $VM.Tags[$ShutdownTimeTag] } else { "N/A" }
     Write-Output "Shutting down: $($VM.Name) with given shutdown time $ShutdownTime in current state $($VM.PowerState)..."
+    if ($DebugMode) { "  [DEBUG] Submitting stop job for $($VM.Name)" }
     
     $SubId = $VM.Id.Split("/")[2] # This is the Subscription Id as part of the VMs resource ID
     If($CurrentSubId -ne $SubId)
     {
+        if ($DebugMode) { "[DEBUG] Switching context to subscription $SubId" }
         Set-AzContext -SubscriptionId $SubId -WarningAction SilentlyContinue | Out-Null
         $CurrentSubId = $SubId
     }
@@ -230,6 +275,7 @@ ForEach ($VM in ($VmsToStart | Sort-Object Id) )
     $StartupTimeTag = $VM.Tags.Keys | Where-Object {$_.toLower() -ieq "autostartuptime"}
     $StartupTime = if ($StartupTimeTag) { $VM.Tags[$StartupTimeTag] } else { "N/A" }
     Write-Output "Starting : $($VM.Name) with given startup time $StartupTime in current state $($VM.PowerState)..."
+    if ($DebugMode) { "  [DEBUG] Submitting start job for $($VM.Name)" }
 
     $SubId = $VM.Id.Split("/")[2] # This is the Subscription Id as part of the VMs resource ID
     If($CurrentSubId -ne $SubId)
