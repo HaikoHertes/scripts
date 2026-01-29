@@ -255,7 +255,7 @@ $Jobs = @()
 # Iterate through VmsToStop and shut them down
 ForEach ($VM in ($VmsToStop | Sort-Object Id)) 
 {
-    $ShutdownTimeTag = $VM.Tags.Keys | Where-Object {$_.toLower() -ieq "autoshutdowntime"}
+    $ShutdownTimeTag = $VM.Tags.Keys | Where-Object {$_.toLower() -ieq $AutoShutdownTimeTagName.toLower()}
     $ShutdownTime = if ($ShutdownTimeTag) { $VM.Tags[$ShutdownTimeTag] } else { "N/A" }
     Write-Output "Shutting down: $($VM.Name) with given shutdown time $ShutdownTime in current state $($VM.PowerState)..."
     if ($DebugMode) { "  [DEBUG] Submitting stop job for $($VM.Name)" }
@@ -272,7 +272,7 @@ ForEach ($VM in ($VmsToStop | Sort-Object Id))
 
 ForEach ($VM in ($VmsToStart | Sort-Object Id) ) 
 {
-    $StartupTimeTag = $VM.Tags.Keys | Where-Object {$_.toLower() -ieq "autostartuptime"}
+    $StartupTimeTag = $VM.Tags.Keys | Where-Object {$_.toLower() -ieq $AutoStartupTimeTagName.toLower()}
     $StartupTime = if ($StartupTimeTag) { $VM.Tags[$StartupTimeTag] } else { "N/A" }
     Write-Output "Starting : $($VM.Name) with given startup time $StartupTime in current state $($VM.PowerState)..."
     if ($DebugMode) { "  [DEBUG] Submitting start job for $($VM.Name)" }
